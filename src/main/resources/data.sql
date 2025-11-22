@@ -1,4 +1,4 @@
-INSERT INTO Currency (coinMarketCapId, currencyName, currencySymbol) VALUES
+INSERT INTO currency (coin_market_cap_id, currency_name, currency_symbol) VALUES
 (1, 'Bitcoin', 'BTC'),
 (2, 'Litecoin', 'LTC'),
 (1027, 'Ethereum', 'ETH'),
@@ -100,7 +100,7 @@ INSERT INTO Currency (coinMarketCapId, currencyName, currencySymbol) VALUES
 (38515, 'DoubleZero', '2Z'),
 (5964, 'Trust Wallet Token', 'TWT');
 
-INSERT INTO CurrencyRate ("value", change24h, currencyRateDate, lastUpdated, currency_id) VALUES
+INSERT INTO currency_rate (rate, change24h, currency_rate_date, last_updated, currency_id) VALUES
 (1.0006812744, -0.00015660789999993874, '2025-11-21', '2025-11-22 14:30:00', 4), -- USDD
 (1.0006812744, -0.0001566078999999, '2025-11-20', '2025-11-21 14:30:00', 4), -- USDD
 (1.0006812744, -0.000156607894, '2025-11-19', '2025-11-20 14:30:00', 4), -- USDD
