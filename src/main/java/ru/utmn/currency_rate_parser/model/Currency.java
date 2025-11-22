@@ -5,9 +5,6 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.List;
-
-
 @Entity
 @Data
 @NoArgsConstructor
@@ -25,9 +22,6 @@ public class Currency {
 
     @Column(nullable = false, unique = true)
     private String currencySymbol;
-
-    @OneToMany(mappedBy = "id")
-    private List<CurrencyRate> currencyRates;
 
     public Currency(int coinMarketCapId, String currencyName, String currencySymbol) {
         this.coinMarketCapId = coinMarketCapId;

@@ -19,7 +19,7 @@ public class CurrencyRate {
     private Integer id;
 
     @Column(nullable = false)
-    private Double value;
+    private Double rate;
 
     @Column(nullable = false)
     private Double change24h;
@@ -33,8 +33,8 @@ public class CurrencyRate {
     @JoinColumn(name = "currency_id", nullable = false)
     private Currency currency;
 
-    public CurrencyRate(Double value, Double change24h, LocalDate currencyRateDate, Currency currency) {
-        this.value = value;
+    public CurrencyRate(Double rate, Double change24h, LocalDate currencyRateDate, Currency currency) {
+        this.rate = rate;
         this.change24h = change24h;
         this.currencyRateDate = currencyRateDate;
         this.lastUpdated = LocalDateTime.now();
