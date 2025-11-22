@@ -17,15 +17,21 @@ public class Currency {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
-    @Column(unique = true)
+    @Column(nullable = false, unique = true)
     private Integer coinMarketCapId;
 
-    @Column(unique = true)
+    @Column(nullable = false)
     private String currencyName;
 
-    @Column(unique = true)
+    @Column(nullable = false, unique = true)
     private String currencySymbol;
 
     @OneToMany(mappedBy = "id")
     private List<CurrencyRate> currencyRates;
+
+    public Currency(int coinMarketCapId, String currencyName, String currencySymbol) {
+        this.coinMarketCapId = coinMarketCapId;
+        this.currencyName = currencyName;
+        this.currencySymbol = currencySymbol;
+    }
 }
