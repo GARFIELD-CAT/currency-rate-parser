@@ -1,0 +1,31 @@
+package ru.utmn.currency_rate_parser.model;
+
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.util.List;
+
+
+@Entity
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class Currency {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Integer id;
+
+    @Column(unique = true)
+    private Integer coinMarketCapId;
+
+    @Column(unique = true)
+    private String currencyName;
+
+    @Column(unique = true)
+    private String currencySymbol;
+
+    @OneToMany(mappedBy = "id")
+    private List<CurrencyRate> currencyRates;
+}
