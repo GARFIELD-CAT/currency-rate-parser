@@ -17,6 +17,7 @@ import ru.utmn.currency_rate_parser.service.CurrencyRateParserService;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Objects;
 
@@ -39,8 +40,14 @@ public class CurrencyRateParserController {
 
     @Operation(summary = "Скачать курсы валют за определенный день", description = "Может работать медленно из-за скачивания актуальных данных")
     @PostMapping("/parse")
-    public ResponseEntity<List<CurrencyRate>> parseCurrencyRates(@RequestBody CurrencyHistoryRatesRequestBody body) {
-        LocalDate date = LocalDate.parse(body.getParseDate(), DateTimeFormatter.ISO_LOCAL_DATE);
+    public ResponseEntity<?> parseCurrencyRates(@RequestBody CurrencyHistoryRatesRequestBody body) {
+        LocalDate date;
+
+        try {
+            date = LocalDate.parse(body.getParseDate(), DateTimeFormatter.ISO_LOCAL_DATE);
+        } catch (DateTimeParseException e) {
+            return ResponseEntity.badRequest().body("Неправильный формат даты. Используйте YYYY-MM-DD.");
+        }
 
         List<String> uniqueList = body.getCurrencySymbols()
                 .parallelStream()
