@@ -27,7 +27,7 @@ public class CurrencyRate {
     @Column(nullable = false)
     private LocalDate currencyRateDate;
 
-    @Column(nullable = false)
+    @Column(nullable = false, length = 30)
     private String baseCurrency;
 
     private LocalDateTime lastUpdated;

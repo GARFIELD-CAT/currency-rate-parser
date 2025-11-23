@@ -20,7 +20,7 @@ public class Currency {
     @Column(nullable = false)
     private String currencyName;
 
-    @Column(nullable = false, unique = true)
+    @Column(nullable = false, unique = true, length = 30)
     private String currencySymbol;
 
     public Currency(int coinMarketCapId, String currencyName, String currencySymbol) {
