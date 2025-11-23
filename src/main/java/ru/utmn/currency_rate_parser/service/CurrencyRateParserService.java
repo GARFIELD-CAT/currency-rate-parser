@@ -3,20 +3,18 @@ package ru.utmn.currency_rate_parser.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
-import ru.utmn.currency_rate_parser.model.Currency;
-import ru.utmn.currency_rate_parser.model.CurrencyRate;
-import ru.utmn.currency_rate_parser.model.HistoryApiResponse;
+import ru.utmn.currency_rate_parser.model.*;
 import ru.utmn.currency_rate_parser.repository.CurrencyRateRepository;
 import ru.utmn.currency_rate_parser.repository.CurrencyRepository;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 import static ru.utmn.currency_rate_parser.Constants.RUB_CONVERT_ID;
@@ -53,8 +51,53 @@ public class CurrencyRateParserService {
         );
     }
 
-    public Page<CurrencyRate> findAll(Pageable pageable) {
-        return null;
+    public List<CurrencyWithRatesDto> findAllCurrencyWithRates(Pageable pageable) {
+        List<String> currencySymbols = currencyRateRepository.findDistinctCurrencyInfo();
+
+//       Тут можно таски создать отдельные для получения курсов валют по конкретной криптовалюте.
+        List<CurrencyWithRatesDto> currencyWithRatesDto = currencySymbols
+                .parallelStream()
+                .map(this::prepareCurrencyWithRatesDto)
+                .filter(Objects::nonNull)
+                .toList();
+
+        return currencyWithRatesDto;
+    }
+
+    private CurrencyWithRatesDto prepareCurrencyWithRatesDto(String currencySymbols) {
+        LocalDate rateDate = LocalDate.now();
+
+        List<CurrencyRate> allCurrencyRatesForDay = currencyRateRepository.findByCurrencySymbolAndCurrencyRateDate(currencySymbols, rateDate);
+
+        if (allCurrencyRatesForDay.isEmpty()) {
+            return null;
+        }
+
+        CurrencyWithRatesDto currencyWithRatesDto = new CurrencyWithRatesDto();
+        CurrencyRate firstElem = allCurrencyRatesForDay.get(0);
+        Currency currency = firstElem.getCurrency();
+
+        currencyWithRatesDto.setCurrencyId(currency.getId());
+        currencyWithRatesDto.setCurrencyName(currency.getCurrencyName());
+        currencyWithRatesDto.setCurrencySymbol(currency.getCurrencySymbol());
+        List<CurrencyRateDto> quotes = new ArrayList<>(allCurrencyRatesForDay.size());
+
+        for (var rate : allCurrencyRatesForDay) {
+            CurrencyRateDto dto = new CurrencyRateDto();
+
+            dto.setRateId(rate.getId());
+            dto.setRate(rate.getRate());
+            dto.setChange24h(rate.getChange24h());
+            dto.setCurrencyRateDate(rate.getCurrencyRateDate());
+            dto.setBaseCurrency(rate.getBaseCurrency());
+            dto.setLastUpdated(rate.getLastUpdated());
+
+            quotes.add(dto);
+        }
+
+        currencyWithRatesDto.setQuotes(quotes);
+
+        return currencyWithRatesDto;
     }
 
     public List<CurrencyRate> parseCurrencyRates(LocalDate parseDay, List<String> currencyNames) {

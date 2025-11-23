@@ -11,11 +11,14 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import ru.utmn.currency_rate_parser.model.CurrencyRate;
 import ru.utmn.currency_rate_parser.model.CurrencyHistoryRatesRequestBody;
+import ru.utmn.currency_rate_parser.model.CurrencyRateDto;
+import ru.utmn.currency_rate_parser.model.CurrencyWithRatesDto;
 import ru.utmn.currency_rate_parser.service.CurrencyRateParserService;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -25,24 +28,34 @@ public class CurrencyRateParserController {
     @Autowired
     private CurrencyRateParserService currencyRateParserService;
 
-    @Operation(summary = "Получить актуальные курсы валют", description = "Есть пагинация и сортировка")
+    @Operation(summary = "Получить актуальные курсы валют за сегодня", description = "Есть пагинация и сортировка")
     @GetMapping("/get-all")
-    public ResponseEntity<List<CurrencyRate>> getCurrencyRates(
+    public ResponseEntity<List<CurrencyWithRatesDto>> getAllCurrencyRates(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size,
-            @RequestParam(defaultValue = "currencyName") String sortBy,
-            @RequestParam(defaultValue = "asc") String sortDir) {
+            @RequestParam(defaultValue = "100") int size,
+            @RequestParam(defaultValue = "currencySymbol") String sortBy,
+            @RequestParam(defaultValue = "desc") String sortDir) {
 
-        Sort sort = sortDir.equalsIgnoreCase("asc") ? Sort.by(sortBy).ascending() : Sort.by(sortBy).descending();
+        Sort sort;
+        if (sortDir.equalsIgnoreCase("asc")) {
+            sort = Sort.by(sortBy).ascending();
+        } else {
+            sort = Sort.by(sortBy).descending();
+        }
+
         Pageable pageable = PageRequest.of(page, size, sort);
 
-        Page<CurrencyRate> currencyRatePage = currencyRateParserService.findAll(pageable);
+        List<CurrencyWithRatesDto> currencyWithRates = currencyRateParserService.findAllCurrencyWithRates(pageable);
 
-        List<CurrencyRate> resultList = currencyRatePage.getContent()
-                .parallelStream()
-                .collect(Collectors.toList());
+//        Page<CurrencyRate> currencyRatePage = currencyRateParserService.findAll(pageable);
+//
+//        List<CurrencyRateDto> resultDtoList = currencyRatePage.getContent()
+//                .parallelStream()
+//                .map(CurrencyRateDto::fromEntity)
+//                .filter(Objects::nonNull)
+//                .collect(Collectors.toList());
 
-        return ResponseEntity.ok(resultList);
+        return ResponseEntity.ok(currencyWithRates);
     }
 
     @Operation(summary = "Скачать курсы валют за определенный день", description = "Может работать медленно из-за скачивания актуальных данных")
