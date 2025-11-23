@@ -136,7 +136,7 @@ public class CurrencyRateParserService {
 
             List<CurrencyRate> currencyRates = currencyRateRepository.findByCurrencyAndCurrencyRateDate(currency.get(), parseDay);
 
-            if (currencyRates.size() == CURRENCY_COUNT && manualParse.equals(Boolean.FALSE)) {
+            if (currencyRates.size() == FIAT_CURRENCY_COUNT && manualParse.equals(Boolean.FALSE)) {
                 log.info("Курсы для валюты {} за {} найдены в базе данных.", name, parseDay);
                 result.addAll(currencyRates);
 
