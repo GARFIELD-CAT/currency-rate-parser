@@ -1,6 +1,7 @@
 package ru.utmn.currency_rate_parser.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,6 +15,7 @@ import ru.utmn.currency_rate_parser.model.Currency;
 import ru.utmn.currency_rate_parser.repository.CurrencyRateRepository;
 import ru.utmn.currency_rate_parser.repository.CurrencyRepository;
 import ru.utmn.currency_rate_parser.service.aggregator.CurrencyRateTaskProducer;
+import ru.utmn.currency_rate_parser.task.LoggerTask;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -22,6 +24,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 import static ru.utmn.currency_rate_parser.Constants.*;
@@ -37,6 +40,7 @@ public class CurrencyRateParserService {
     private final CurrencyRateRepository currencyRateRepository;
     private final ExecutorService executorService = Executors.newFixedThreadPool(30);
     private final ExecutorService parseCurrencyExecutorService = Executors.newFixedThreadPool(20);
+    AtomicInteger demonCount = new AtomicInteger(0);
 
     public CurrencyRateParserService(WebClient webClient, CurrencyRepository currencyRepository, CurrencyRateRepository currencyRateRepository, CurrencyRateTaskProducer currencyRateTaskProducer) {
         this.webClient = webClient;
@@ -247,6 +251,16 @@ public class CurrencyRateParserService {
 
     public Page<Currency> getAllCurrency(Pageable pageable) {
         return currencyRepository.findAll(pageable);
+    }
+
+    @PostConstruct
+    public String processStartDemon() {
+        LoggerTask loggerTask = new LoggerTask(currencyRateRepository, currencyRepository);
+        Thread loggerThread = new Thread(loggerTask, "LoggerTask-Daemon:" + demonCount.incrementAndGet());
+        loggerThread.setDaemon(true);
+        loggerThread.start();
+
+        return "ok!";
     }
 
     @PreDestroy
