@@ -6,9 +6,10 @@ import ru.utmn.currency_rate_parser.model.Currency;
 import ru.utmn.currency_rate_parser.model.CurrencyRate;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 
 @Repository
 public interface CurrencyRateRepository extends JpaRepository<CurrencyRate, Integer> {
-    Optional<CurrencyRate> findByCurrencyAndCurrencyRateDate(Currency currency, LocalDate currencyRateDate);
+    List<CurrencyRate> findByCurrencyAndCurrencyRateDate(Currency currency, LocalDate currencyRateDate);
 }

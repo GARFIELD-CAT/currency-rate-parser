@@ -19,6 +19,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+import static ru.utmn.currency_rate_parser.Constants.RUB_CONVERT_ID;
+import static ru.utmn.currency_rate_parser.Constants.USD_CONVERT_ID;
 import static ru.utmn.currency_rate_parser.utils.CoinMarketCapUrlBuilder.buildHistoricalUrl;
 import static ru.utmn.currency_rate_parser.utils.TimeUtils.*;
 
@@ -36,16 +38,17 @@ public class CurrencyRateParserService {
         this.currencyRateRepository = currencyRateRepository;
     }
 
-    private static CurrencyRate getCurrencyRate(Currency currency, List<HistoryApiResponse.QuoteData> quotes) {
+    private static CurrencyRate getCurrencyRate(Currency currency, List<HistoryApiResponse.QuoteData> quotes, String baseCurrency) {
         HistoryApiResponse.Quote quote = quotes.get(quotes.size() - 1).getQuote();
-        var value = quote.getClose();
+        var rate = quote.getClose();
         var change24h = quote.getOpen() - quote.getClose();
         var currencyRateDate = convertStringDateToLocalDate(quote.getTimestamp());
 
         return new CurrencyRate(
-                value,
+                rate,
                 change24h,
                 currencyRateDate,
+                baseCurrency,
                 currency
         );
     }
@@ -54,12 +57,12 @@ public class CurrencyRateParserService {
         return null;
     }
 
-    public List<Optional<CurrencyRate>> parseCurrencyRates(LocalDate parseDay, List<String> currencyNames) {
+    public List<CurrencyRate> parseCurrencyRates(LocalDate parseDay, List<String> currencyNames) {
         log.info("Начинаю асинхронную агрегацию данных по списку валют за {}.", parseDay);
         // Можно задачи еще разибвать на отдельные валюты и тогда вообще быстро все будет.
 
         long timeStart = convertDateToTimestamp(parseDay);
-        List<Optional<CurrencyRate>> result = new ArrayList<>(currencyNames.size());
+        List<CurrencyRate> result = new ArrayList<>(currencyNames.size());
 
         for (String name : currencyNames) {
             Optional<Currency> currency = currencyRepository.findByCurrencySymbol(name);
@@ -67,41 +70,56 @@ public class CurrencyRateParserService {
             if (currency.isEmpty()) {
                 log.info("Валюта с именем {} не найдена в базе данных.", name);
 //                result.add(String.format("Валюта с именем %s не найдена в базе данных.", name));
-//                ???? Вызывать ошибку
+//                ???? Вызывать ошибку или пытаться скачать? Но как?
 //                raise new CurrencyNotFoundError(String.format("Валюта с именем %s не найдена в базе данных.", name))
 
                 continue;
             }
 
-            Optional<CurrencyRate> currencyRate = currencyRateRepository.findByCurrencyAndCurrencyRateDate(currency.get(), parseDay);
+            List<CurrencyRate> currencyRates = currencyRateRepository.findByCurrencyAndCurrencyRateDate(currency.get(), parseDay);
 
-            if (currencyRate.isPresent()) {
-                log.info("Курс для валюты {} за {} найден в базе данных.", name, parseDay);
-                result.add(currencyRate);
+            if (!currencyRates.isEmpty()) {
+                log.info("Курсы для валюты {} за {} найдены в базе данных.", name, parseDay);
+                result.addAll(currencyRates);
 
                 continue;
             }
             log.info("Курс для валюты {} за {} не найден в базе данных.", name, parseDay);
 
-            String url;
+            List<String> urls = new ArrayList<>(2);
 
             if (parseDay.isEqual(LocalDate.now())) {
-                url = buildHistoricalUrl(currency.get().getCoinMarketCapId());
+                urls.add(buildHistoricalUrl(currency.get().getCoinMarketCapId(), USD_CONVERT_ID));
+                urls.add(buildHistoricalUrl(currency.get().getCoinMarketCapId(), RUB_CONVERT_ID));
             } else {
-                url = buildHistoricalUrl(currency.get().getCoinMarketCapId(), timeStart);
+                urls.add(buildHistoricalUrl(currency.get().getCoinMarketCapId(), timeStart, USD_CONVERT_ID));
+                urls.add(buildHistoricalUrl(currency.get().getCoinMarketCapId(), timeStart, RUB_CONVERT_ID));
             }
 
-
 //            Тут нужно будет таску кидать в очередь, а воркеры будут их разгребать!
-            currencyRate = Optional.ofNullable(fetchCurrencyRateData(url, currency.get()));
+            for (var url : urls) {
+                String baseCurrency = "USD";
 
-            result.add(currencyRate);
+                if (url.contains(RUB_CONVERT_ID)) {
+                    baseCurrency = "RUB";
+                }
+
+                Optional<CurrencyRate> currencyRate = Optional.ofNullable(fetchCurrencyRateData(url, currency.get(), baseCurrency));
+                log.info("Курс для валюты {} за {} успешно скачан с источника.", name, parseDay);
+
+                if (currencyRate.isPresent()) {
+                    currencyRateRepository.save(currencyRate.get());
+                    log.info("Курс для валюты {} за {} успешно сохранен в базе данных.", name, parseDay);
+
+                    result.add(currencyRate.get());
+                }
+            }
         }
 
         return result;
     }
 
-    private CurrencyRate fetchCurrencyRateData(String url, Currency currency) {
+    private CurrencyRate fetchCurrencyRateData(String url, Currency currency, String baseCurrency) {
         long startTime = System.nanoTime();
         ObjectMapper objectMapper = new ObjectMapper();
 
@@ -123,7 +141,7 @@ public class CurrencyRateParserService {
                                                 return null;
                                             }
 
-                                            CurrencyRate currencyRate = getCurrencyRate(currency, quotes);
+                                            CurrencyRate currencyRate = getCurrencyRate(currency, quotes, baseCurrency);
 
                                             return currencyRate;
                                         } catch (Exception e) {

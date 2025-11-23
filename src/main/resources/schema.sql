@@ -12,8 +12,9 @@ CREATE TABLE currency_rate (
     rate DOUBLE NOT NULL,
     change24h DOUBLE  NOT NULL,
     currency_rate_date DATE NOT NULL,
+    base_currency  VARCHAR(10) NOT NULL,
     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     currency_id INT NOT NULL,
     FOREIGN KEY (currency_id) REFERENCES Currency(id) ON DELETE CASCADE,
-    UNIQUE (currency_id, currency_rate_date)
+    UNIQUE (currency_id, base_currency, currency_rate_date)
 );

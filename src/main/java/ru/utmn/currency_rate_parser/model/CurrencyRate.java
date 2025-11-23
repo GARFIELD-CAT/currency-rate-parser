@@ -12,7 +12,7 @@ import java.time.LocalDateTime;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@Table(uniqueConstraints = @UniqueConstraint(columnNames = {"currency_id", "currencyRateDate"}))
+@Table(uniqueConstraints = @UniqueConstraint(columnNames = {"currency_id", "baseCurrency", "currencyRateDate"}))
 public class CurrencyRate {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -27,16 +27,20 @@ public class CurrencyRate {
     @Column(nullable = false)
     private LocalDate currencyRateDate;
 
+    @Column(nullable = false)
+    private String baseCurrency;
+
     private LocalDateTime lastUpdated;
 
     @ManyToOne()
     @JoinColumn(name = "currency_id", nullable = false)
     private Currency currency;
 
-    public CurrencyRate(Double rate, Double change24h, LocalDate currencyRateDate, Currency currency) {
+    public CurrencyRate(Double rate, Double change24h, LocalDate currencyRateDate, String baseCurrency, Currency currency) {
         this.rate = rate;
         this.change24h = change24h;
         this.currencyRateDate = currencyRateDate;
+        this.baseCurrency = baseCurrency;
         this.lastUpdated = LocalDateTime.now();
         this.currency = currency;
     }

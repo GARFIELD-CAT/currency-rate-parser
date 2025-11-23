@@ -47,10 +47,10 @@ public class CurrencyRateParserController {
 
     @Operation(summary = "Скачать курсы валют за определенный день", description = "Может работать медленно из-за скачивания актуальных данных")
     @PostMapping("/parse")
-    public ResponseEntity<List<Optional<CurrencyRate>>> parseCurrencyRates(@RequestBody CurrencyHistoryRatesRequestBody body) {
+    public ResponseEntity<List<CurrencyRate>> parseCurrencyRates(@RequestBody CurrencyHistoryRatesRequestBody body) {
         LocalDate date = LocalDate.parse(body.getParseDate(), DateTimeFormatter.ISO_LOCAL_DATE);
 
-        List<Optional<CurrencyRate>> message = currencyRateParserService.parseCurrencyRates(date, body.getCurrencyNames());
+        List<CurrencyRate> message = currencyRateParserService.parseCurrencyRates(date, body.getCurrencyNames());
         return ResponseEntity.ok(message);
     }
 }
