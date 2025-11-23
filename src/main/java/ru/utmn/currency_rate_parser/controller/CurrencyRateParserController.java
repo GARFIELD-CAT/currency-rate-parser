@@ -52,7 +52,7 @@ public class CurrencyRateParserController {
     }
 
     @Operation(summary = "Получить список всех криптовалют, доступных для скачивания", description = "Есть пагинация и сортировка")
-    @PostMapping("/get-all-currency")
+    @GetMapping("/get-all-currency")
     public ResponseEntity<List<Currency>> getAllCurrency(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "100") int size,
