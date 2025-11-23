@@ -1,6 +1,7 @@
 package ru.utmn.currency_rate_parser.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
@@ -9,15 +10,18 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 import ru.utmn.currency_rate_parser.model.*;
+import ru.utmn.currency_rate_parser.model.Currency;
 import ru.utmn.currency_rate_parser.repository.CurrencyRateRepository;
 import ru.utmn.currency_rate_parser.repository.CurrencyRepository;
+import ru.utmn.currency_rate_parser.service.aggregator.CurrencyRateTaskProducer;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static ru.utmn.currency_rate_parser.Constants.*;
 import static ru.utmn.currency_rate_parser.utils.CoinMarketCapUrlBuilder.buildHistoricalUrl;
@@ -30,8 +34,9 @@ public class CurrencyRateParserService {
     private final WebClient webClient;
     private final CurrencyRepository currencyRepository;
     private final CurrencyRateRepository currencyRateRepository;
+    private final ExecutorService executorService = Executors.newFixedThreadPool(30);
 
-    public CurrencyRateParserService(WebClient webClient, CurrencyRepository currencyRepository, CurrencyRateRepository currencyRateRepository) {
+    public CurrencyRateParserService(WebClient webClient, CurrencyRepository currencyRepository, CurrencyRateRepository currencyRateRepository, CurrencyRateTaskProducer currencyRateTaskProducer) {
         this.webClient = webClient;
         this.currencyRepository = currencyRepository;
         this.currencyRateRepository = currencyRateRepository;
@@ -66,20 +71,38 @@ public class CurrencyRateParserService {
         }
     }
 
-    public List<CurrencyWithRatesDto> findAllCurrencyWithRates() {
+    public List<CurrencyWithRatesDto> findAllCurrencyWithRates(int page, int size) {
         List<String> currencySymbols = currencyRateRepository.findDistinctCurrencyInfo();
 
-//       Тут можно таски создать отдельные для получения курсов валют по конкретной криптовалюте.
-        List<CurrencyWithRatesDto> currencyWithRatesDto = currencySymbols
-                .parallelStream()
-                .map(this::prepareCurrencyWithRatesDto)
+        int fromIndex = page * size;
+
+        if (fromIndex >= currencySymbols.size()) {
+            log.info("Запрашиваемая страница выходит за пределы доступных данных.");
+            return Collections.emptyList();
+        }
+
+        int toIndex = Math.min(fromIndex + size, currencySymbols.size());
+
+        List<String> paginatedCurrencySymbols = currencySymbols.subList(fromIndex, toIndex);
+
+        List<CompletableFuture<CurrencyWithRatesDto>> futures = paginatedCurrencySymbols.stream()
+                .map(symbol -> CompletableFuture.supplyAsync(() -> prepareCurrencyWithRatesDto(symbol), executorService))
                 .filter(Objects::nonNull)
                 .toList();
+
+        List<CurrencyWithRatesDto> currencyWithRatesDto = futures.stream()
+                .map(CompletableFuture::join)
+                .filter(Objects::nonNull)
+                .toList();
+
+        log.info("{}: Успешно собрал информацию по {} валютам.", Thread.currentThread().getName(), paginatedCurrencySymbols.size());
 
         return currencyWithRatesDto;
     }
 
     private CurrencyWithRatesDto prepareCurrencyWithRatesDto(String currencySymbols) {
+        log.info("{}: Начинаю сбор информации по валюте {}.", Thread.currentThread().getName(), currencySymbols);
+
         LocalDate rateDate = LocalDate.now();
 
         List<CurrencyRate> allCurrencyRatesForDay = currencyRateRepository.findByCurrencySymbolAndCurrencyRateDate(currencySymbols, rateDate);
@@ -111,6 +134,7 @@ public class CurrencyRateParserService {
         }
 
         currencyWithRatesDto.setQuotes(quotes);
+        log.info("{}: Успешно закончил сбор информации по валюте {}.", Thread.currentThread().getName(), currencySymbols);
 
         return currencyWithRatesDto;
     }
@@ -127,10 +151,6 @@ public class CurrencyRateParserService {
 
             if (currency.isEmpty()) {
                 log.info("Валюта с именем {} не найдена в базе данных.", name);
-//                result.add(String.format("Валюта с именем %s не найдена в базе данных.", name));
-//                ???? Вызывать ошибку или пытаться скачать? Но как?
-//                raise new CurrencyNotFoundError(String.format("Валюта с именем %s не найдена в базе данных.", name))
-
                 continue;
             }
 
@@ -228,5 +248,18 @@ public class CurrencyRateParserService {
 
     public Page<Currency> getAllCurrency(Pageable pageable) {
         return currencyRepository.findAll(pageable);
+    }
+
+    @PreDestroy
+    public void shutdown() {
+        executorService.shutdown();
+        try {
+            if (!executorService.awaitTermination(10, TimeUnit.SECONDS)) {
+                executorService.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            executorService.shutdownNow();
+            throw new RuntimeException(e);
+        }
     }
 }

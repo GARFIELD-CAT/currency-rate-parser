@@ -28,8 +28,11 @@ public class CurrencyRateParserController {
 
     @Operation(summary = "Получить актуальные курсы валют за сегодня")
     @GetMapping("/get-all")
-    public ResponseEntity<List<CurrencyWithRatesDto>> getAllCurrencyRates() {
-        List<CurrencyWithRatesDto> currencyWithRates = currencyRateParserService.findAllCurrencyWithRates();
+    public ResponseEntity<List<CurrencyWithRatesDto>> getAllCurrencyRates(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "100") int size
+    ) {
+        List<CurrencyWithRatesDto> currencyWithRates = currencyRateParserService.findAllCurrencyWithRates(page, size);
 
         return ResponseEntity.ok(currencyWithRates);
     }

@@ -26,6 +26,7 @@ public interface CurrencyRateRepository extends JpaRepository<CurrencyRate, Inte
     );
 
     @Query(value = "SELECT DISTINCT c.currency_symbol  FROM currency_rate\n" +
-            "JOIN currency AS c ON c.id = currency_rate.currency_id", nativeQuery = true)
+            "JOIN currency AS c ON c.id = currency_rate.currency_id " +
+            "ORDER BY c.currency_symbol ASC", nativeQuery = true)
     List<String> findDistinctCurrencyInfo();
 }
