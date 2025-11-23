@@ -1,5 +1,6 @@
 package ru.utmn.currency_rate_parser.service.aggregator;
 
+import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,6 +45,7 @@ public class CurrencyRateTaskProducer {
             producerExecutor.submit(() -> processTasks(chunk));
         }
         log.info("Добавлено {} задач в очередь на скачивание курсов валют.", total);
+//       TODO: Нужно вынести в Logger
         log.info("Текущий размер очереди задач на скачивание курсов валют {}.", queue.size());
     }
 
@@ -70,7 +72,7 @@ public class CurrencyRateTaskProducer {
         for (int i = 0; i < pageCount; i++) {
             int start = 1;
 
-            if (i != 0){
+            if (i != 0) {
                 start = start + i * MAX_CRYPTOCURRENCY_PER_PAGE_COUNT;
             }
 
@@ -80,6 +82,7 @@ public class CurrencyRateTaskProducer {
         return tasks;
     }
 
+    @PostConstruct
     public void start() {
         log.info("Запуск генерации задач на кроулинг курсов валют. Интервал: {} минут.", aggregationIntervalMinutes);
         scheduler.scheduleAtFixedRate(this::submitCurrencyRateTasks, 0, aggregationIntervalMinutes, TimeUnit.MINUTES);
@@ -89,7 +92,7 @@ public class CurrencyRateTaskProducer {
     public void stop() {
         scheduler.shutdown();
         try {
-            if (!scheduler.awaitTermination(60, TimeUnit.SECONDS)) {
+            if (!scheduler.awaitTermination(30, TimeUnit.SECONDS)) {
                 scheduler.shutdownNow();
             }
         } catch (InterruptedException ie) {
