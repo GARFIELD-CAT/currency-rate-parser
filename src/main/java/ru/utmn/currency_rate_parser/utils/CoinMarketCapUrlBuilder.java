@@ -1,7 +1,10 @@
 package ru.utmn.currency_rate_parser.utils;
 
+import java.time.LocalDate;
+
 import static ru.utmn.currency_rate_parser.Constants.COIN_MARKET_CAP_HISTORICAL_BASE_URL;
 import static ru.utmn.currency_rate_parser.Constants.COIN_MARKET_CAP_LISTING_BASE_URL;
+import static ru.utmn.currency_rate_parser.utils.TimeUtils.convertDateToTimestamp;
 
 public class CoinMarketCapUrlBuilder {
     /**
@@ -9,6 +12,12 @@ public class CoinMarketCapUrlBuilder {
      */
     public static String buildHistoricalUrl(int coinMarketCapId, long timeStart, String convertId) {
         long timeEnd = timeStart + 86400;
+        LocalDate today = LocalDate.now();
+
+        if (timeStart == convertDateToTimestamp(today.minusDays(1))) {
+            return String.format("%s?id=%d&convertId=%s&timeStart=%d&interval=1d",
+                    COIN_MARKET_CAP_HISTORICAL_BASE_URL, coinMarketCapId, convertId, timeStart);
+        }
 
         return String.format("%s?id=%d&convertId=%s&timeStart=%d&timeEnd=%d&interval=1d",
                 COIN_MARKET_CAP_HISTORICAL_BASE_URL, coinMarketCapId, convertId, timeStart, timeEnd);

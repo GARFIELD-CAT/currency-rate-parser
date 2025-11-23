@@ -22,6 +22,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import static ru.utmn.currency_rate_parser.Constants.*;
 import static ru.utmn.currency_rate_parser.utils.CoinMarketCapUrlBuilder.buildHistoricalUrl;
@@ -35,6 +36,7 @@ public class CurrencyRateParserService {
     private final CurrencyRepository currencyRepository;
     private final CurrencyRateRepository currencyRateRepository;
     private final ExecutorService executorService = Executors.newFixedThreadPool(30);
+    private final ExecutorService parseCurrencyExecutorService = Executors.newFixedThreadPool(20);
 
     public CurrencyRateParserService(WebClient webClient, CurrencyRepository currencyRepository, CurrencyRateRepository currencyRateRepository, CurrencyRateTaskProducer currencyRateTaskProducer) {
         this.webClient = webClient;
@@ -140,61 +142,58 @@ public class CurrencyRateParserService {
     }
 
     public List<CurrencyRate> parseCurrencyRates(LocalDate parseDay, List<String> currencyNames, Boolean manualParse) {
-        log.info("Начинаю асинхронную агрегацию данных по списку валют за {}.", parseDay);
-        // Можно задачи еще разибвать на отдельные валюты и тогда вообще быстро все будет.
+        log.info("{}: Начинаю асинхронную агрегацию данных по списку валют за {}.", Thread.currentThread().getName(), parseDay);
 
         long timeStart = convertDateToTimestamp(parseDay);
-        List<CurrencyRate> result = new ArrayList<>(currencyNames.size());
 
-        for (String name : currencyNames) {
-            Optional<Currency> currency = currencyRepository.findByCurrencySymbol(name);
+        List<CompletableFuture<List<CurrencyRate>>> futures = currencyNames.stream()
+                .map(name -> CompletableFuture.supplyAsync(() -> {
+                    Optional<Currency> currency = currencyRepository.findByCurrencySymbol(name);
+                    List<CurrencyRate> results = new ArrayList<>();
 
-            if (currency.isEmpty()) {
-                log.info("Валюта с именем {} не найдена в базе данных.", name);
-                continue;
-            }
+                    if (currency.isEmpty()) {
+                        log.info("{}: Валюта с именем {} не найдена в базе данных.", Thread.currentThread().getName(), name);
+                        return results;
+                    }
 
-            List<CurrencyRate> currencyRates = currencyRateRepository.findByCurrencyAndCurrencyRateDate(currency.get(), parseDay);
+                    List<CurrencyRate> currencyRates = currencyRateRepository.findByCurrencyAndCurrencyRateDate(currency.get(), parseDay);
 
-            if (currencyRates.size() == FIAT_CURRENCY_COUNT && manualParse.equals(Boolean.FALSE)) {
-                log.info("Курсы для валюты {} за {} найдены в базе данных.", name, parseDay);
-                result.addAll(currencyRates);
+                    if (currencyRates.size() == FIAT_CURRENCY_COUNT && !manualParse) {
+                        log.info("{}: Курсы для валюты {} за {} найдены в базе данных.", Thread.currentThread().getName(), name, parseDay);
+                        return currencyRates;
+                    }
 
-                continue;
-            }
-            log.info("Курс для валюты {} за {} не найден в базе данных.", name, parseDay);
+                    log.info("{}: Курс для валюты {} за {} не найден в базе данных.", Thread.currentThread().getName(), name, parseDay);
 
-            List<String> urls = new ArrayList<>(2);
+                    List<String> urls = new ArrayList<>(FIAT_CURRENCY_COUNT);
+                    if (parseDay.isEqual(LocalDate.now())) {
+                        urls.add(buildHistoricalUrl(currency.get().getCoinMarketCapId(), USD_CONVERT_ID));
+                        urls.add(buildHistoricalUrl(currency.get().getCoinMarketCapId(), RUB_CONVERT_ID));
+                    } else {
+                        urls.add(buildHistoricalUrl(currency.get().getCoinMarketCapId(), timeStart, USD_CONVERT_ID));
+                        urls.add(buildHistoricalUrl(currency.get().getCoinMarketCapId(), timeStart, RUB_CONVERT_ID));
+                    }
 
-            if (parseDay.isEqual(LocalDate.now())) {
-                urls.add(buildHistoricalUrl(currency.get().getCoinMarketCapId(), USD_CONVERT_ID));
-                urls.add(buildHistoricalUrl(currency.get().getCoinMarketCapId(), RUB_CONVERT_ID));
-            } else {
-                urls.add(buildHistoricalUrl(currency.get().getCoinMarketCapId(), timeStart, USD_CONVERT_ID));
-                urls.add(buildHistoricalUrl(currency.get().getCoinMarketCapId(), timeStart, RUB_CONVERT_ID));
-            }
+                    for (String url : urls) {
+                        String baseCurrency = url.contains(RUB_CONVERT_ID) ? "RUB" : "USD";
+                        Optional<CurrencyRate> currencyRate = Optional.ofNullable(fetchCurrencyRateData(url, currency.get(), baseCurrency));
 
-//            Тут нужно будет таску кидать в очередь, а воркеры будут их разгребать!
-            for (var url : urls) {
-                String baseCurrency = "USD";
+                        if (currencyRate.isPresent()) {
+                            currencyRateRepository.save(currencyRate.get());
+                            log.info("{} Курс для валюты {} за {} успешно сохранен в базе данных.", Thread.currentThread().getName(), name, parseDay);
+                            results.add(currencyRate.get());
+                        }
+                    }
+                    return results;
+                }))
+                .toList();
 
-                if (url.contains(RUB_CONVERT_ID)) {
-                    baseCurrency = "RUB";
-                }
+        List<CurrencyRate> combinedResults = futures.stream()
+                .map(CompletableFuture::join)
+                .flatMap(List::stream)
+                .collect(Collectors.toList());
 
-                Optional<CurrencyRate> currencyRate = Optional.ofNullable(fetchCurrencyRateData(url, currency.get(), baseCurrency));
-                log.info("Курс для валюты {} за {} успешно скачан с источника.", name, parseDay);
-
-                if (currencyRate.isPresent()) {
-                    currencyRateRepository.save(currencyRate.get());
-                    log.info("Курс для валюты {} за {} успешно сохранен в базе данных.", name, parseDay);
-
-                    result.add(currencyRate.get());
-                }
-            }
-        }
-
-        return result;
+        return combinedResults;
     }
 
     private CurrencyRate fetchCurrencyRateData(String url, Currency currency, String baseCurrency) {
@@ -253,13 +252,18 @@ public class CurrencyRateParserService {
     @PreDestroy
     public void shutdown() {
         executorService.shutdown();
+        parseCurrencyExecutorService.shutdown();
         try {
             if (!executorService.awaitTermination(10, TimeUnit.SECONDS)) {
                 executorService.shutdownNow();
             }
+            if (!parseCurrencyExecutorService.awaitTermination(10, TimeUnit.SECONDS)) {
+                parseCurrencyExecutorService.shutdownNow();
+            }
         } catch (InterruptedException e) {
             executorService.shutdownNow();
-            throw new RuntimeException(e);
+            parseCurrencyExecutorService.shutdownNow();
+            Thread.currentThread().interrupt();
         }
     }
 }

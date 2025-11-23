@@ -14,5 +14,5 @@ public class CurrencyHistoryRatesRequestBody {
     @Schema(description = "Запрашиваемая дата в формате YYYY-MM-DD", example = "2025-11-22")
     private String parseDate;
     @Schema(description = "Список названий криптовалют, например: [\"BTC\", \"ETH\", \"USDD\"]", example = "[\"BTC\", \"ETH\", \"USDD\"]")
-    private List<String> currencySymbol;
+    private List<String> currencySymbols;
 }

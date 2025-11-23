@@ -42,7 +42,12 @@ public class CurrencyRateParserController {
     public ResponseEntity<List<CurrencyRate>> parseCurrencyRates(@RequestBody CurrencyHistoryRatesRequestBody body) {
         LocalDate date = LocalDate.parse(body.getParseDate(), DateTimeFormatter.ISO_LOCAL_DATE);
 
-        List<CurrencyRate> message = currencyRateParserService.parseCurrencyRates(date, body.getCurrencySymbol(), body.getManualParse());
+        List<String> uniqueList = body.getCurrencySymbols()
+                .parallelStream()
+                .distinct()
+                .toList();
+
+        List<CurrencyRate> message = currencyRateParserService.parseCurrencyRates(date, uniqueList, body.getManualParse());
         return ResponseEntity.ok(message);
     }
 

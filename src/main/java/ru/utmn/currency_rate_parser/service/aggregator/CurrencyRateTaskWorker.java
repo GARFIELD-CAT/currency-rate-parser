@@ -184,7 +184,7 @@ public class CurrencyRateTaskWorker {
             }
         } catch (InterruptedException e) {
             executorService.shutdownNow();
-            throw new RuntimeException(e);
+            Thread.currentThread().interrupt();
         }
     }
 }

@@ -7,9 +7,9 @@ public class Constants {
     public final static String USD_CONVERT_ID = "2781"; // Доллары (USD)
     public final static Integer FIAT_CURRENCY_COUNT = 2; // Текущее количество фиатных валют, по которым поулчаем курс криптовалют
     public final static Integer CURRENCY_RATE_TASK_MAX_COUNT = 100;
-    public final static Integer TOTAL_CRYPTOCURRENCY_COUNT = 5000; // Данных на истончике больше. Около 9К. Делаем ограничение, чтобы не забанили.
+    public final static Integer TOTAL_CRYPTOCURRENCY_COUNT = 5000; // Данных на источнике больше. Около 9К. Делаем ограничение, чтобы не забанили.
     public final static Integer MAX_CRYPTOCURRENCY_PER_PAGE_COUNT = 100;
     public final static Integer PRODUCER_EXECUTOR_COUNT = 10;
-    public final static Integer CURRENCY_RATE_AGGREGATION_INTERVAL_MINUTES = 30; // 30 минут.
+    public final static Integer CURRENCY_RATE_AGGREGATION_INTERVAL_MINUTES = 10; // 10 минут.
     public final static Integer CURRENCY_RATE_TASK_WORKERS_COUNT = 10;
 }
