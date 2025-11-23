@@ -28,6 +28,7 @@ public class CurrencyRateTaskProducer {
     }
 
     public CurrencyRateTask take() throws InterruptedException {
+        log.info("Текущий размер очереди задач на скачивание курсов валют {}.", queue.size());
         return queue.take();
     }
 
@@ -37,7 +38,7 @@ public class CurrencyRateTaskProducer {
         int total = tasks.size();
         int chunkSize = (int) Math.ceil((double) total / PRODUCER_EXECUTOR_COUNT);
 
-        for (int i = 0; i < chunkSize; i++) {
+        for (int i = 0; i < PRODUCER_EXECUTOR_COUNT; i++) {
             int start = i * chunkSize;
             int end = Math.min(start + chunkSize, total);
             if (start >= total) break;
@@ -45,8 +46,6 @@ public class CurrencyRateTaskProducer {
             producerExecutor.submit(() -> processTasks(chunk));
         }
         log.info("Добавлено {} задач в очередь на скачивание курсов валют.", total);
-//       TODO: Нужно вынести в Logger
-        log.info("Текущий размер очереди задач на скачивание курсов валют {}.", queue.size());
     }
 
     private void processTasks(List<CurrencyRateTask> chunk) {

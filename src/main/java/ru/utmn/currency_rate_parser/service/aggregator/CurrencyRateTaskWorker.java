@@ -84,12 +84,13 @@ public class CurrencyRateTaskWorker {
                 log.info("{}: Валюта с именем {} не найдена в базе данных.", Thread.currentThread().getName(), raw_currency.getSymbol());
                 currencyRepository.save(new_currency);
                 currency = Optional.of(new_currency);
+                log.info("{}: Валюта с именем {} успешно создана.", Thread.currentThread().getName(), currency.get().getCurrencySymbol());
             } else {
                 if (!new_currency.getCoinMarketCapId().equals(currency.get().getCoinMarketCapId())) {
                     continue;
                 }
+                log.info("{}: Валюта с именем {} успешно получена из базы.", Thread.currentThread().getName(), currency.get().getCurrencySymbol());
             }
-            log.info("{}: Валюта с именем {} успешно создана.", Thread.currentThread().getName(), currency.get().getCurrencySymbol());
 
             for (var quote : raw_currency.getQuotes()) {
                 saveCurrencyRate(currency.get(), quote, quote.getName());
