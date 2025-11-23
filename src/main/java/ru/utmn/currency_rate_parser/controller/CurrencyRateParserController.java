@@ -45,6 +45,8 @@ public class CurrencyRateParserController {
         List<String> uniqueList = body.getCurrencySymbols()
                 .parallelStream()
                 .distinct()
+                .limit(100)
+                .filter(Objects::nonNull)
                 .toList();
 
         List<CurrencyRate> message = currencyRateParserService.parseCurrencyRates(date, uniqueList, body.getManualParse());
