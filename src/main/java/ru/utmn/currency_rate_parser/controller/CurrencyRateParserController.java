@@ -28,24 +28,26 @@ public class CurrencyRateParserController {
     @Autowired
     private CurrencyRateParserService currencyRateParserService;
 
-    @Operation(summary = "Получить актуальные курсы валют за сегодня", description = "Есть пагинация и сортировка")
-    @GetMapping("/get-all")
-    public ResponseEntity<List<CurrencyWithRatesDto>> getAllCurrencyRates(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "100") int size,
-            @RequestParam(defaultValue = "currencySymbol") String sortBy,
-            @RequestParam(defaultValue = "desc") String sortDir) {
+//    @Operation(summary = "Получить актуальные курсы валют за сегодня", description = "Есть пагинация и сортировка")
+//    @GetMapping("/get-all")
+//    public ResponseEntity<List<CurrencyWithRatesDto>> getAllCurrencyRates(
+//            @RequestParam(defaultValue = "0") int page,
+//            @RequestParam(defaultValue = "100") int size,
+//            @RequestParam(defaultValue = "currencySymbol") String sortBy,
+//            @RequestParam(defaultValue = "desc") String sortDir
+//    ) {
 
-        Sort sort;
-        if (sortDir.equalsIgnoreCase("asc")) {
-            sort = Sort.by(sortBy).ascending();
-        } else {
-            sort = Sort.by(sortBy).descending();
-        }
+//        Sort sort;
+//        if (sortDir.equalsIgnoreCase("asc")) {
+//            sort = Sort.by(sortBy).ascending();
+//        } else {
+//            sort = Sort.by(sortBy).descending();
+//        }
+//
+//        Pageable pageable = PageRequest.of(page, size, sort);
 
-        Pageable pageable = PageRequest.of(page, size, sort);
-
-        List<CurrencyWithRatesDto> currencyWithRates = currencyRateParserService.findAllCurrencyWithRates(pageable);
+//        List<CurrencyWithRatesDto> currencyWithRates = currencyRateParserService.findAllCurrencyWithRates(pageable);
+//        List<CurrencyWithRatesDto> currencyWithRates = currencyRateParserService.findAllCurrencyWithRates();
 
 //        Page<CurrencyRate> currencyRatePage = currencyRateParserService.findAll(pageable);
 //
@@ -54,6 +56,14 @@ public class CurrencyRateParserController {
 //                .map(CurrencyRateDto::fromEntity)
 //                .filter(Objects::nonNull)
 //                .collect(Collectors.toList());
+//
+//        return ResponseEntity.ok(currencyWithRates);
+//    }
+    @Operation(summary = "Получить актуальные курсы валют за сегодня", description = "Есть пагинация и сортировка")
+    @GetMapping("/get-all")
+    public ResponseEntity<List<CurrencyWithRatesDto>> getAllCurrencyRates()
+    {
+        List<CurrencyWithRatesDto> currencyWithRates = currencyRateParserService.findAllCurrencyWithRates();
 
         return ResponseEntity.ok(currencyWithRates);
     }
@@ -63,7 +73,7 @@ public class CurrencyRateParserController {
     public ResponseEntity<List<CurrencyRate>> parseCurrencyRates(@RequestBody CurrencyHistoryRatesRequestBody body) {
         LocalDate date = LocalDate.parse(body.getParseDate(), DateTimeFormatter.ISO_LOCAL_DATE);
 
-        List<CurrencyRate> message = currencyRateParserService.parseCurrencyRates(date, body.getCurrencyNames());
+        List<CurrencyRate> message = currencyRateParserService.parseCurrencyRates(date, body.getCurrencyNames(), body.getManualParse());
         return ResponseEntity.ok(message);
     }
 }

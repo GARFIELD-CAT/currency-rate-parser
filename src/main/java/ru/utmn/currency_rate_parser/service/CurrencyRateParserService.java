@@ -65,7 +65,7 @@ public class CurrencyRateParserService {
         }
     }
 
-    public List<CurrencyWithRatesDto> findAllCurrencyWithRates(Pageable pageable) {
+    public List<CurrencyWithRatesDto> findAllCurrencyWithRates() {
         List<String> currencySymbols = currencyRateRepository.findDistinctCurrencyInfo();
 
 //       Тут можно таски создать отдельные для получения курсов валют по конкретной криптовалюте.
@@ -114,7 +114,7 @@ public class CurrencyRateParserService {
         return currencyWithRatesDto;
     }
 
-    public List<CurrencyRate> parseCurrencyRates(LocalDate parseDay, List<String> currencyNames) {
+    public List<CurrencyRate> parseCurrencyRates(LocalDate parseDay, List<String> currencyNames, Boolean manualParse) {
         log.info("Начинаю асинхронную агрегацию данных по списку валют за {}.", parseDay);
         // Можно задачи еще разибвать на отдельные валюты и тогда вообще быстро все будет.
 
@@ -135,7 +135,7 @@ public class CurrencyRateParserService {
 
             List<CurrencyRate> currencyRates = currencyRateRepository.findByCurrencyAndCurrencyRateDate(currency.get(), parseDay);
 
-            if (currencyRates.size() == CURRENCY_COUNT) {
+            if (currencyRates.size() == CURRENCY_COUNT && manualParse.equals(Boolean.FALSE)) {
                 log.info("Курсы для валюты {} за {} найдены в базе данных.", name, parseDay);
                 result.addAll(currencyRates);
 
