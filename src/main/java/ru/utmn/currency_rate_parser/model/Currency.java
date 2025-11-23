@@ -23,7 +23,7 @@ public class Currency {
     @Column(nullable = false, unique = true, length = 30)
     private String currencySymbol;
 
-    public Currency(int coinMarketCapId, String currencyName, String currencySymbol) {
+    public Currency(Integer coinMarketCapId, String currencyName, String currencySymbol) {
         this.coinMarketCapId = coinMarketCapId;
         this.currencyName = currencyName;
         this.currencySymbol = currencySymbol;

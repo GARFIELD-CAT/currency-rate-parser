@@ -12,13 +12,13 @@ import ru.utmn.currency_rate_parser.repository.CurrencyRateRepository;
 import ru.utmn.currency_rate_parser.repository.CurrencyRepository;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
-import static ru.utmn.currency_rate_parser.Constants.RUB_CONVERT_ID;
-import static ru.utmn.currency_rate_parser.Constants.USD_CONVERT_ID;
+import static ru.utmn.currency_rate_parser.Constants.*;
 import static ru.utmn.currency_rate_parser.utils.CoinMarketCapUrlBuilder.buildHistoricalUrl;
 import static ru.utmn.currency_rate_parser.utils.TimeUtils.*;
 
@@ -36,19 +36,33 @@ public class CurrencyRateParserService {
         this.currencyRateRepository = currencyRateRepository;
     }
 
-    private static CurrencyRate getCurrencyRate(Currency currency, List<HistoryApiResponse.QuoteData> quotes, String baseCurrency) {
+    private CurrencyRate getCurrencyRate(Currency currency, List<HistoryApiResponse.QuoteData> quotes, String baseCurrency) {
         HistoryApiResponse.Quote quote = quotes.get(quotes.size() - 1).getQuote();
         var rate = quote.getClose();
         var change24h = quote.getOpen() - quote.getClose();
         var currencyRateDate = convertStringDateToLocalDate(quote.getTimestamp());
 
-        return new CurrencyRate(
-                rate,
-                change24h,
-                currencyRateDate,
-                baseCurrency,
-                currency
-        );
+        Optional<CurrencyRate> old_currency = currencyRateRepository.findByCurrencyAndCurrencyRateDateAndBaseCurrency(currency, currencyRateDate, baseCurrency);
+
+        if (old_currency.isPresent()) {
+            return new CurrencyRate(
+                    old_currency.get().getId(),
+                    rate,
+                    change24h,
+                    currencyRateDate,
+                    baseCurrency,
+                    LocalDateTime.now(),
+                    currency
+            );
+        } else {
+            return new CurrencyRate(
+                    rate,
+                    change24h,
+                    currencyRateDate,
+                    baseCurrency,
+                    currency
+            );
+        }
     }
 
     public List<CurrencyWithRatesDto> findAllCurrencyWithRates(Pageable pageable) {
@@ -121,7 +135,7 @@ public class CurrencyRateParserService {
 
             List<CurrencyRate> currencyRates = currencyRateRepository.findByCurrencyAndCurrencyRateDate(currency.get(), parseDay);
 
-            if (!currencyRates.isEmpty()) {
+            if (currencyRates.size() == CURRENCY_COUNT) {
                 log.info("Курсы для валюты {} за {} найдены в базе данных.", name, parseDay);
                 result.addAll(currencyRates);
 

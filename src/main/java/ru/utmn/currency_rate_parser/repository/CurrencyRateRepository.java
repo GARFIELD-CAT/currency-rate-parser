@@ -11,10 +11,13 @@ import ru.utmn.currency_rate_parser.model.CurrencyRate;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface CurrencyRateRepository extends JpaRepository<CurrencyRate, Integer> {
     List<CurrencyRate> findByCurrencyAndCurrencyRateDate(Currency currency, LocalDate currencyRateDate);
+
+    Optional<CurrencyRate> findByCurrencyAndCurrencyRateDateAndBaseCurrency(Currency currency, LocalDate currencyRateDate, String baseCurrency);
 
     @Query(value = "SELECT currency_rate.id, rate, change24h, currency_rate_date, base_currency, last_updated, currency_id FROM currency_rate\n" +
             "JOIN currency AS c ON c.id = currency_rate.currency_id\n" +
