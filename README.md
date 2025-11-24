@@ -1,6 +1,7 @@
 # Currency Rate Parser API
 
-Этот проект предоставляет API для получения актуальных курсов криптовалют, скачивания исторических курсов и получения списка доступных криптовалют.
+Этот проект предоставляет API для получения актуальных курсов криптовалют, скачивания исторических курсов и получения
+списка доступных криптовалют.
 
 ## Запуск проекта
 
@@ -25,6 +26,15 @@
     http://localhost:8080/swagger-ui/index.html
    ```
 
+## Алгоритм работы сервиса
+
+- При старте работы и далее по расписанию раз в 10 минут асинхронно обновляются курсы криптовалют за текущий день
+- Можно получить актуальные курсы криптовалют за сегодня по ручке `http://localhost:8080/api/v1/currency-rates/get-all`
+- Можно получить список всех доступных для парсинга криптовалют по ручке
+  `http://localhost:8080/api/v1/currency-rates/get-all-currency`
+- Можно вручную скачать курс криптовалют за конкретный день по ручке `http://localhost:8080/api/v1/currency-rates/parse`
+    - На данный момент реализован парсинг в RUB (рублях) и USD (долларах)
+
 ## Использование API
 
 ### 1. Получить актуальные курсы валют за сегодня
@@ -36,6 +46,7 @@
     - `size` (по умолчанию 100): Количество записей на странице.
 
 **Пример запроса**:
+
 ```http
 GET http://localhost:8080/api/v1/currency-rates/get-all?page=0&size=100
 ```
@@ -45,15 +56,21 @@ GET http://localhost:8080/api/v1/currency-rates/get-all?page=0&size=100
 - **URL**: `http://localhost:8080/api/v1/currency-rates/parse`
 - **Метод**: `POST`
 - **Тело запроса**:
+
 ```json
 {
-    "manualParse": false,
-    "parseDate": "2025-11-22",
-    "currencySymbols": ["BTC", "ETH", "USDT"]
+  "manualParse": false,
+  "parseDate": "2025-11-22",
+  "currencySymbols": [
+    "BTC",
+    "ETH",
+    "USDT"
+  ]
 }
 ```
 
 **Пример запроса**:
+
 ```http
 POST http://localhost:8080/api/v1/currency-rates/parse
 Content-Type: application/json
@@ -76,6 +93,7 @@ Content-Type: application/json
     - `sortDir` (по умолчанию `asc`): Направление сортировки (`asc` или `desc`).
 
 **Пример запроса**:
+
 ```http
 GET http://localhost:8080/api/v1/currency-rates/get-all-currency?page=0&size=10&sortBy=coinMarketCapId&sortDir=asc
 ```
