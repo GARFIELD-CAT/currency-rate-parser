@@ -1,4 +1,23 @@
 services:
+  postgres:
+    image: postgres:latest
+    container_name: postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: master_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+
+    #  redis-task:
+    #    image: redis:latest
+    #    container_name: redis-task
+    #    ports:
+    #      - "6379:6379"
+    #    restart: unless-stopped
+
   prometheus:
     container_name: prometheus
     image: prom/prometheus:latest
@@ -23,3 +42,4 @@ services:
 
 volumes:
   grafana_data:
+  postgres_data:
