@@ -40,7 +40,6 @@ public class CurrencyRateParserService {
     private final CurrencyRateRepository currencyRateRepository;
     private final ObjectMapper objectMapper;
     private final ExecutorService executorService = Executors.newFixedThreadPool(30);
-    private final ExecutorService parseCurrencyExecutorService = Executors.newFixedThreadPool(20);
     AtomicInteger demonCount = new AtomicInteger(0);
 
     public CurrencyRateParserService(WebClient webClient, CurrencyRepository currencyRepository, CurrencyRateRepository currencyRateRepository, CurrencyRateTaskProducer currencyRateTaskProducer, ObjectMapper objectMapper) {
@@ -267,17 +266,12 @@ public class CurrencyRateParserService {
     @PreDestroy
     public void shutdown() {
         executorService.shutdown();
-        parseCurrencyExecutorService.shutdown();
         try {
             if (!executorService.awaitTermination(10, TimeUnit.SECONDS)) {
                 executorService.shutdownNow();
             }
-            if (!parseCurrencyExecutorService.awaitTermination(10, TimeUnit.SECONDS)) {
-                parseCurrencyExecutorService.shutdownNow();
-            }
         } catch (InterruptedException e) {
             executorService.shutdownNow();
-            parseCurrencyExecutorService.shutdownNow();
             Thread.currentThread().interrupt();
         }
     }
