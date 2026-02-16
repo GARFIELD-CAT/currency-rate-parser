@@ -38,14 +38,16 @@ public class CurrencyRateParserService {
     private final WebClient webClient;
     private final CurrencyRepository currencyRepository;
     private final CurrencyRateRepository currencyRateRepository;
+    private final ObjectMapper objectMapper;
     private final ExecutorService executorService = Executors.newFixedThreadPool(30);
     private final ExecutorService parseCurrencyExecutorService = Executors.newFixedThreadPool(20);
     AtomicInteger demonCount = new AtomicInteger(0);
 
-    public CurrencyRateParserService(WebClient webClient, CurrencyRepository currencyRepository, CurrencyRateRepository currencyRateRepository, CurrencyRateTaskProducer currencyRateTaskProducer) {
+    public CurrencyRateParserService(WebClient webClient, CurrencyRepository currencyRepository, CurrencyRateRepository currencyRateRepository, CurrencyRateTaskProducer currencyRateTaskProducer, ObjectMapper objectMapper) {
         this.webClient = webClient;
         this.currencyRepository = currencyRepository;
         this.currencyRateRepository = currencyRateRepository;
+        this.objectMapper = objectMapper;
     }
 
     private CurrencyRate getCurrencyRate(Currency currency, List<HistoryApiResponse.QuoteData> quotes, String baseCurrency) {
@@ -202,7 +204,6 @@ public class CurrencyRateParserService {
 
     private CurrencyRate fetchCurrencyRateData(String url, Currency currency, String baseCurrency) {
         long startTime = System.nanoTime();
-        ObjectMapper objectMapper = new ObjectMapper();
 
         try {
             return (CurrencyRate) webClient.get()

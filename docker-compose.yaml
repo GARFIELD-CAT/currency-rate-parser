@@ -7,7 +7,7 @@ services:
     volumes:
       - ./prometheus.yaml:/etc/prometheus/prometheus.yaml
     command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--config.file=/etc/prometheus/prometheus.yaml'
       - '--web.enable-lifecycle'  # позволяет перезагружать конфиг без рестарта
 
   grafana:

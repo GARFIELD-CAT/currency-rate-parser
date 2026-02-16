@@ -33,11 +33,13 @@ public class CurrencyRateTaskWorker {
     private final CurrencyRepository currencyRepository;
     private final ExecutorService executorService;
     private final WebClient webClient;
+    private final ObjectMapper objectMapper;
 
-    public CurrencyRateTaskWorker(CurrencyRateTaskProducer currencyRateTaskProducer, CurrencyRateRepository currencyRateRepository, CurrencyRepository currencyRepository, WebClient webClient) {
+    public CurrencyRateTaskWorker(CurrencyRateTaskProducer currencyRateTaskProducer, CurrencyRateRepository currencyRateRepository, CurrencyRepository currencyRepository, WebClient webClient, ObjectMapper objectMapper) {
         this.currencyRateTaskProducer = currencyRateTaskProducer;
         this.currencyRateRepository = currencyRateRepository;
         this.currencyRepository = currencyRepository;
+        this.objectMapper = objectMapper;
         this.executorService = Executors.newFixedThreadPool(CURRENCY_RATE_TASK_WORKERS_COUNT);
         this.webClient = webClient;
     }
@@ -137,7 +139,6 @@ public class CurrencyRateTaskWorker {
 
     private ListingApiResponse fetchData(CurrencyRateTask task) {
         long startTime = System.nanoTime();
-        ObjectMapper objectMapper = new ObjectMapper();
         var url = task.getUrl();
 
         try {
