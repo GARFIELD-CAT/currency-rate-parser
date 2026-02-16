@@ -16,6 +16,7 @@ import ru.utmn.currency_rate_parser.repository.CurrencyRateRepository;
 import ru.utmn.currency_rate_parser.repository.CurrencyRepository;
 import ru.utmn.currency_rate_parser.service.aggregator.CurrencyRateTaskProducer;
 import ru.utmn.currency_rate_parser.task.LoggerTask;
+import ru.utmn.currency_rate_parser.utils.RoundUtils;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -51,8 +52,8 @@ public class CurrencyRateParserService {
 
     private CurrencyRate getCurrencyRate(Currency currency, List<HistoryApiResponse.QuoteData> quotes, String baseCurrency) {
         HistoryApiResponse.Quote quote = quotes.get(quotes.size() - 1).getQuote();
-        var rate = quote.getClose();
-        var change24h = quote.getOpen() - quote.getClose();
+        var rate = RoundUtils.roundDouble(quote.getClose());
+        var change24h = RoundUtils.roundDouble(quote.getOpen() - quote.getClose());
         var currencyRateDate = convertStringDateToLocalDate(quote.getTimestamp());
 
         Optional<CurrencyRate> old_currency = currencyRateRepository.findByCurrencyAndCurrencyRateDateAndBaseCurrency(currency, currencyRateDate, baseCurrency);

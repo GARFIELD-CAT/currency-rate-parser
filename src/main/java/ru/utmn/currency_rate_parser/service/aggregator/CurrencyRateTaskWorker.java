@@ -13,6 +13,7 @@ import ru.utmn.currency_rate_parser.model.CurrencyRate;
 import ru.utmn.currency_rate_parser.model.ListingApiResponse;
 import ru.utmn.currency_rate_parser.repository.CurrencyRateRepository;
 import ru.utmn.currency_rate_parser.repository.CurrencyRepository;
+import ru.utmn.currency_rate_parser.utils.RoundUtils;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -103,8 +104,8 @@ public class CurrencyRateTaskWorker {
     }
 
     private void saveCurrencyRate(Currency currency, ListingApiResponse.Quote quote, String baseCurrency) {
-        var rate = quote.getPrice();
-        var change24h = quote.getPrice() / 100 * quote.getPercentChange24h();
+        var rate = RoundUtils.roundDouble(quote.getPrice());
+        var change24h = RoundUtils.roundDouble(quote.getPrice() / 100 * quote.getPercentChange24h());
         var currencyRateDate = LocalDate.now();
 
         Optional<CurrencyRate> old_currency = currencyRateRepository.findByCurrencyAndCurrencyRateDateAndBaseCurrency(currency, currencyRateDate, baseCurrency);
