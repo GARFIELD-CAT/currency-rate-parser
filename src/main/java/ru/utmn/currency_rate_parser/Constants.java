@@ -10,6 +10,6 @@ public class Constants {
     public final static Integer TOTAL_CRYPTOCURRENCY_COUNT = 5000; // Данных на источнике больше. Около 9К. Делаем ограничение, чтобы не забанили.
     public final static Integer MAX_CRYPTOCURRENCY_PER_PAGE_COUNT = 100;
     public final static Integer PRODUCER_EXECUTOR_COUNT = 10;
-    public final static Integer CURRENCY_RATE_AGGREGATION_INTERVAL_MINUTES = 5; // 5 минут.
+    public final static Integer CURRENCY_RATE_AGGREGATION_INTERVAL_MINUTES = 10; // 10 минут.
     public final static Integer CURRENCY_RATE_TASK_WORKERS_COUNT = 10;
 }
