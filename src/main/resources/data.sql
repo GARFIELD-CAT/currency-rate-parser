@@ -3,10 +3,11 @@ INSERT INTO currency (coin_market_cap_id, currency_name, currency_symbol) VALUES
 (1, 'Bitcoin', 'BTC'),
 (2, 'Litecoin', 'LTC'),
 (1027, 'Ethereum', 'ETH'),
-(19891, 'USDD', 'USDD');
+(19891, 'USDD', 'USDD')
+ON CONFLICT (coin_market_cap_id) DO NOTHING;
 
 INSERT INTO currency_rate (rate, change24h, currency_rate_date, base_currency, last_updated, currency_id) VALUES
-(1.0006812744, -0.000156, '2025-11-21', 'USD', '2025-11-22 14:30:00', 4); -- USDD
+(1.0006812744, -0.000156, '2025-11-21', 'USD', '2025-11-22 14:30:00', 4), -- USDD
 (1.0006812744, -0.000156, '2025-11-20', 'USD', '2025-11-21 14:30:00', 4), -- USDD
 (80.00, -1.00, '2025-11-20', 'RUB', '2025-11-21 14:30:00', 4), -- USDD
 (1.0006812744, -0.000156, '2025-11-19', 'USD', '2025-11-20 14:30:00', 4), -- USDD
@@ -15,4 +16,5 @@ INSERT INTO currency_rate (rate, change24h, currency_rate_date, base_currency, l
 (90000.00, 40000.50, '2025-11-18', 'RUB', '2025-11-20 14:40:00', 1), -- BTC
 (120000.00, 500.50, '2025-11-19', 'USD', '2025-11-20 14:40:00', 1), -- BTC
 (4000.50, 20.00, '2025-11-21', 'USD', '2025-11-22 14:45:00', 3), -- ETH
-(150.25, -1.50, '2025-11-19', 'USD', '2025-11-22 14:55:00', 2); -- LTC
+(150.25, -1.50, '2025-11-19', 'USD', '2025-11-22 14:55:00', 2) -- LTC
+ON CONFLICT (currency_id, base_currency, currency_rate_date) DO NOTHING;
