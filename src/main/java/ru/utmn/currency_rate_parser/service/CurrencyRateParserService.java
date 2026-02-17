@@ -1,6 +1,10 @@
 package ru.utmn.currency_rate_parser.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Timer;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -40,14 +44,30 @@ public class CurrencyRateParserService {
     private final CurrencyRepository currencyRepository;
     private final CurrencyRateRepository currencyRateRepository;
     private final ObjectMapper objectMapper;
+    private final Timer parsingTimer;
+    private final Counter successCounter;
+    private final Counter errorCounter;
+    private final Gauge currencyRateDBSize;
     private final ExecutorService executorService = Executors.newFixedThreadPool(30);
     AtomicInteger demonCount = new AtomicInteger(0);
 
-    public CurrencyRateParserService(WebClient webClient, CurrencyRepository currencyRepository, CurrencyRateRepository currencyRateRepository, CurrencyRateTaskProducer currencyRateTaskProducer, ObjectMapper objectMapper) {
+    public CurrencyRateParserService(WebClient webClient, CurrencyRepository currencyRepository, CurrencyRateRepository currencyRateRepository, CurrencyRateTaskProducer currencyRateTaskProducer, ObjectMapper objectMapper, MeterRegistry meterRegistry) {
         this.webClient = webClient;
         this.currencyRepository = currencyRepository;
         this.currencyRateRepository = currencyRateRepository;
         this.objectMapper = objectMapper;
+        this.successCounter = Counter.builder("client.currency_rate.requests.success.count")
+                .description("Количество успешных парсингов курсов валют")
+                .register(meterRegistry);
+        this.errorCounter = Counter.builder("client.currency_rate.requests.error.count")
+                .description("Количество ошибок парсинга курсов валют")
+                .register(meterRegistry);
+        this.parsingTimer = Timer.builder("client.currency_rate.requests.parsing.time")
+                .description("Время парсинга курсов валют в секундах")
+                .register(meterRegistry);
+        this.currencyRateDBSize = Gauge.builder("client.currency_rate.db.size", this::getCurrencyRateDBSize)
+                .description("Количество курсов валют в базе данных")
+                .register(meterRegistry);
     }
 
     private CurrencyRate getCurrencyRate(Currency currency, List<HistoryApiResponse.QuoteData> quotes, String baseCurrency) {
@@ -149,9 +169,10 @@ public class CurrencyRateParserService {
 
     public List<CurrencyRate> parseCurrencyRates(LocalDate parseDay, List<String> currencyNames, Boolean manualParse) {
         log.info("{}: Начинаю асинхронную агрегацию данных по списку валют за {}.", Thread.currentThread().getName(), parseDay);
-
-        long timeStart = convertDateToTimestamp(parseDay);
-
+        parsingTimer.record(() -> {
+            // Ваша логика парсинга
+        });
+        long startTime = convertDateToTimestamp(parseDay);
         List<CompletableFuture<List<CurrencyRate>>> futures = currencyNames.stream()
                 .map(name -> CompletableFuture.supplyAsync(() -> {
                     Optional<Currency> currency = currencyRepository.findByCurrencySymbol(name);
@@ -159,6 +180,8 @@ public class CurrencyRateParserService {
 
                     if (currency.isEmpty()) {
                         log.info("{}: Валюта с именем {} не найдена в базе данных.", Thread.currentThread().getName(), name);
+                        errorCounter.increment();
+
                         return results;
                     }
 
@@ -166,6 +189,8 @@ public class CurrencyRateParserService {
 
                     if (currencyRates.size() == FIAT_CURRENCY_COUNT && !manualParse) {
                         log.info("{}: Курсы для валюты {} за {} найдены в базе данных.", Thread.currentThread().getName(), name, parseDay);
+                        successCounter.increment();
+
                         return currencyRates;
                     }
 
@@ -176,8 +201,8 @@ public class CurrencyRateParserService {
                         urls.add(buildHistoricalUrl(currency.get().getCoinMarketCapId(), USD_CONVERT_ID));
                         urls.add(buildHistoricalUrl(currency.get().getCoinMarketCapId(), RUB_CONVERT_ID));
                     } else {
-                        urls.add(buildHistoricalUrl(currency.get().getCoinMarketCapId(), timeStart, USD_CONVERT_ID));
-                        urls.add(buildHistoricalUrl(currency.get().getCoinMarketCapId(), timeStart, RUB_CONVERT_ID));
+                        urls.add(buildHistoricalUrl(currency.get().getCoinMarketCapId(), startTime, USD_CONVERT_ID));
+                        urls.add(buildHistoricalUrl(currency.get().getCoinMarketCapId(), startTime, RUB_CONVERT_ID));
                     }
 
                     for (String url : urls) {
@@ -187,6 +212,7 @@ public class CurrencyRateParserService {
                         if (currencyRate.isPresent()) {
                             currencyRateRepository.save(currencyRate.get());
                             log.info("{} Курс для валюты {} за {} успешно сохранен в базе данных.", Thread.currentThread().getName(), name, parseDay);
+                            successCounter.increment();
                             results.add(currencyRate.get());
                         }
                     }
@@ -198,6 +224,8 @@ public class CurrencyRateParserService {
                 .map(CompletableFuture::join)
                 .flatMap(List::stream)
                 .collect(Collectors.toList());
+
+        parsingTimer.record(System.nanoTime() - startTime, TimeUnit.NANOSECONDS);
 
         return combinedResults;
     }
@@ -236,6 +264,7 @@ public class CurrencyRateParserService {
                             return response.bodyToMono(String.class)
                                     .map(errorBody -> {
                                         log.error("Ошибка при скачивании курсов валют: {}.", errorBody);
+                                        errorCounter.increment();
 
                                         return null;
                                     });
@@ -245,6 +274,7 @@ public class CurrencyRateParserService {
         } catch (Exception e) {
             evaluateExecutionTime(startTime);
             log.error("Ошибка при скачивании курсов валют: {}.", e.toString());
+            errorCounter.increment();
 
             return null;
         }
@@ -262,6 +292,10 @@ public class CurrencyRateParserService {
         loggerThread.start();
 
         return "ok!";
+    }
+
+    public long getCurrencyRateDBSize() {
+        return currencyRateRepository.count();
     }
 
     @PreDestroy
