@@ -9,6 +9,12 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@Table(
+    name = "currency",
+    indexes = {
+        @Index(name = "currency_symbol_idx", columnList = "currencySymbol")
+    }
+)
 public class Currency {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

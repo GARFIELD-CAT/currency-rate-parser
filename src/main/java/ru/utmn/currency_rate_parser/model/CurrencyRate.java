@@ -12,7 +12,15 @@ import java.time.LocalDateTime;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@Table(uniqueConstraints = @UniqueConstraint(columnNames = {"currency_id", "baseCurrency", "currencyRateDate"}))
+@Table(
+    name = "currency_rate",
+    uniqueConstraints = @UniqueConstraint(
+        columnNames = {"currency_id", "baseCurrency", "currencyRateDate"}
+    ),
+    indexes = {
+        @Index(name = "currency_rate_date_idx", columnList = "currencyRateDate")
+    }
+)
 public class CurrencyRate {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -32,7 +40,7 @@ public class CurrencyRate {
 
     private LocalDateTime lastUpdated;
 
-    @ManyToOne()
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "currency_id", nullable = false)
     private Currency currency;
 

@@ -6,7 +6,6 @@ import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.annotation.PostConstruct;
-import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
@@ -26,10 +25,9 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.Lock;
 import java.util.stream.Collectors;
 
 import static ru.utmn.currency_rate_parser.Constants.*;
@@ -48,10 +46,10 @@ public class CurrencyRateParserService {
     private final Counter successCounter;
     private final Counter errorCounter;
     private final Gauge currencyRateDBSize;
-    private final ExecutorService executorService = Executors.newFixedThreadPool(30);
+    private final CurrencyLockManager lockManager;
     AtomicInteger demonCount = new AtomicInteger(0);
 
-    public CurrencyRateParserService(WebClient webClient, CurrencyRepository currencyRepository, CurrencyRateRepository currencyRateRepository, CurrencyRateTaskProducer currencyRateTaskProducer, ObjectMapper objectMapper, MeterRegistry meterRegistry) {
+    public CurrencyRateParserService(WebClient webClient, CurrencyRepository currencyRepository, CurrencyRateRepository currencyRateRepository, CurrencyRateTaskProducer currencyRateTaskProducer, ObjectMapper objectMapper, MeterRegistry meterRegistry, CurrencyLockManager lockManager) {
         this.webClient = webClient;
         this.currencyRepository = currencyRepository;
         this.currencyRateRepository = currencyRateRepository;
@@ -68,6 +66,7 @@ public class CurrencyRateParserService {
         this.currencyRateDBSize = Gauge.builder("client.currency_rate.db.size", this::getCurrencyRateDBSize)
                 .description("Количество курсов валют в базе данных")
                 .register(meterRegistry);
+        this.lockManager = lockManager;
     }
 
     private CurrencyRate getCurrencyRate(Currency currency, List<HistoryApiResponse.QuoteData> quotes, String baseCurrency) {
@@ -100,69 +99,80 @@ public class CurrencyRateParserService {
     }
 
     public List<CurrencyWithRatesDto> findAllCurrencyWithRates(int page, int size) {
-        List<String> currencySymbols = currencyRateRepository.findDistinctCurrencyInfo();
+        List<String> allCurrencySymbols = currencyRateRepository.findDistinctCurrencyInfo();
 
         int fromIndex = page * size;
 
-        if (fromIndex >= currencySymbols.size()) {
+        if (fromIndex >= allCurrencySymbols.size()) {
             log.info("Запрашиваемая страница выходит за пределы доступных данных.");
             return Collections.emptyList();
         }
 
-        int toIndex = Math.min(fromIndex + size, currencySymbols.size());
+        int toIndex = Math.min(fromIndex + size, allCurrencySymbols.size());
+        List<String> paginatedCurrencySymbols = allCurrencySymbols.subList(fromIndex, toIndex);
 
-        List<String> paginatedCurrencySymbols = currencySymbols.subList(fromIndex, toIndex);
-
-        List<CompletableFuture<CurrencyWithRatesDto>> futures = paginatedCurrencySymbols.stream()
-                .map(symbol -> CompletableFuture.supplyAsync(() -> prepareCurrencyWithRatesDto(symbol), executorService))
-                .filter(Objects::nonNull)
-                .toList();
-
-        List<CurrencyWithRatesDto> currencyWithRatesDto = futures.stream()
-                .map(CompletableFuture::join)
-                .filter(Objects::nonNull)
-                .toList();
-
-        log.info("{}: Успешно собрал информацию по {} валютам.", Thread.currentThread().getName(), paginatedCurrencySymbols.size());
-
-        return currencyWithRatesDto;
-    }
-
-    private CurrencyWithRatesDto prepareCurrencyWithRatesDto(String currencySymbols) {
-        log.info("{}: Начинаю сбор информации по валюте {}.", Thread.currentThread().getName(), currencySymbols);
+        if (paginatedCurrencySymbols.isEmpty()) {
+            return Collections.emptyList();
+        }
 
         LocalDate rateDate = LocalDate.now();
 
-        List<CurrencyRate> allCurrencyRatesForDay = currencyRateRepository.findByCurrencySymbolAndCurrencyRateDate(currencySymbols, rateDate);
+        List<CurrencyRate> allRatesForPage = currencyRateRepository.findByCurrencySymbolsAndCurrencyRateDate(
+                paginatedCurrencySymbols,
+                rateDate
+        );
 
-        if (allCurrencyRatesForDay.isEmpty()) {
-            return null;
-        }
+        log.info("{}: Загружено {} записей о курсах для {} символов.",
+                Thread.currentThread().getName(),
+                allRatesForPage.size(),
+                paginatedCurrencySymbols.size());
 
-        CurrencyWithRatesDto currencyWithRatesDto = new CurrencyWithRatesDto();
+        Map<String, List<CurrencyRate>> groupedBySymbol = allRatesForPage.stream()
+                .collect(Collectors.groupingBy(rate -> rate.getCurrency().getCurrencySymbol()));
+
+        List<CurrencyWithRatesDto> resultDto = paginatedCurrencySymbols.stream()
+                .map(symbol -> {
+                    List<CurrencyRate> ratesForSymbol = groupedBySymbol.get(symbol);
+
+                    if (ratesForSymbol == null || ratesForSymbol.isEmpty()) {
+                        return null;
+                    }
+
+                    return transformToDto(symbol, ratesForSymbol);
+                })
+                .filter(Objects::nonNull)
+                .toList();
+
+        log.info("{}: Успешно собрал информацию по {} валютам.", Thread.currentThread().getName(), resultDto.size());
+
+        return resultDto;
+    }
+
+
+    private CurrencyWithRatesDto transformToDto(String symbol, List<CurrencyRate> allCurrencyRatesForDay) {
         CurrencyRate firstElem = allCurrencyRatesForDay.get(0);
         Currency currency = firstElem.getCurrency();
 
+        CurrencyWithRatesDto currencyWithRatesDto = new CurrencyWithRatesDto();
         currencyWithRatesDto.setCurrencyId(currency.getId());
         currencyWithRatesDto.setCurrencyName(currency.getCurrencyName());
         currencyWithRatesDto.setCurrencySymbol(currency.getCurrencySymbol());
+
         List<CurrencyRateDto> quotes = new ArrayList<>(allCurrencyRatesForDay.size());
 
         for (var rate : allCurrencyRatesForDay) {
             CurrencyRateDto dto = new CurrencyRateDto();
-
             dto.setRateId(rate.getId());
             dto.setRate(rate.getRate());
             dto.setChange24h(rate.getChange24h());
             dto.setCurrencyRateDate(rate.getCurrencyRateDate());
             dto.setBaseCurrency(rate.getBaseCurrency());
             dto.setLastUpdated(rate.getLastUpdated());
-
             quotes.add(dto);
         }
 
         currencyWithRatesDto.setQuotes(quotes);
-        log.info("{}: Успешно закончил сбор информации по валюте {}.", Thread.currentThread().getName(), currencySymbols);
+        log.info("Сбор информации по валюте {} закончен.", symbol);
 
         return currencyWithRatesDto;
     }
@@ -182,7 +192,7 @@ public class CurrencyRateParserService {
                         return results;
                     }
 
-                    List<CurrencyRate> currencyRates = currencyRateRepository.findByCurrencyAndCurrencyRateDate(currency.get(), parseDay);
+                    List<CurrencyRate> currencyRates = currencyRateRepository.findByCurrencyIdAndCurrencyRateDate(currency.get().getId(), parseDay);
 
                     if (currencyRates.size() == FIAT_CURRENCY_COUNT && !manualParse) {
                         log.info("{}: Курсы для валюты {} за {} найдены в базе данных.", Thread.currentThread().getName(), name, parseDay);
@@ -212,7 +222,7 @@ public class CurrencyRateParserService {
                     List<CompletableFuture<CurrencyRate>> results1 = futuresCurrencyRate.stream()
                             .map(future -> future.thenApply(currencyRate -> {
                                 if (currencyRate != null) {
-                                    currencyRateRepository.save(currencyRate);
+                                    saveCurrencyRate(currency.get().getCurrencySymbol(), currencyRate);
                                     log.info("{} Курс для валюты {} за {} успешно сохранен в базе данных.", Thread.currentThread().getName(), name, parseDay);
                                     successCounter.increment();
                                 }
@@ -307,16 +317,14 @@ public class CurrencyRateParserService {
         return currencyRateRepository.count();
     }
 
-    @PreDestroy
-    public void shutdown() {
-        executorService.shutdown();
+    public void saveCurrencyRate(String currencySymbol, CurrencyRate newRate) {
+        Lock currencyLock = lockManager.getLockForCurrency(currencySymbol);
+
+        currencyLock.lock();
         try {
-            if (!executorService.awaitTermination(10, TimeUnit.SECONDS)) {
-                executorService.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            executorService.shutdownNow();
-            Thread.currentThread().interrupt();
+            currencyRateRepository.save(newRate);
+        } finally {
+            currencyLock.unlock();
         }
     }
 }

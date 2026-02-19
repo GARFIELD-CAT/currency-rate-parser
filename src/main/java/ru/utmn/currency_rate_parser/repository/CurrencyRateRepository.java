@@ -13,20 +13,28 @@ import java.util.Optional;
 
 @Repository
 public interface CurrencyRateRepository extends JpaRepository<CurrencyRate, Integer> {
-    List<CurrencyRate> findByCurrencyAndCurrencyRateDate(Currency currency, LocalDate currencyRateDate);
-
-    Optional<CurrencyRate> findByCurrencyAndCurrencyRateDateAndBaseCurrency(Currency currency, LocalDate currencyRateDate, String baseCurrency);
-
-    @Query(value = "SELECT currency_rate.id, rate, change24h, currency_rate_date, base_currency, last_updated, currency_id FROM currency_rate\n" +
-            "JOIN currency AS c ON c.id = currency_rate.currency_id\n" +
-            "WHERE currency_symbol = :currency_symbol AND currency_rate_date = :currency_rate_date", nativeQuery = true)
-    List<CurrencyRate> findByCurrencySymbolAndCurrencyRateDate(
-            @Param("currency_symbol") String currencySymbol,
+    @Query("SELECT cr FROM CurrencyRate cr " +
+            "LEFT JOIN FETCH cr.currency c " +
+            "WHERE c.id = :currency_id " +
+            "AND cr.currencyRateDate = :currency_rate_date")
+    List<CurrencyRate> findByCurrencyIdAndCurrencyRateDate(
+            @Param("currency_id") Integer currencyId,
             @Param("currency_rate_date") LocalDate currencyRateDate
     );
+
+    Optional<CurrencyRate> findByCurrencyAndCurrencyRateDateAndBaseCurrency(Currency currency, LocalDate currencyRateDate, String baseCurrency);
 
     @Query(value = "SELECT DISTINCT c.currency_symbol  FROM currency_rate\n" +
             "JOIN currency AS c ON c.id = currency_rate.currency_id " +
             "ORDER BY c.currency_symbol ASC", nativeQuery = true)
     List<String> findDistinctCurrencyInfo();
+
+    @Query("SELECT cr FROM CurrencyRate cr " +
+            "LEFT JOIN FETCH cr.currency c " +
+            "WHERE c.currencySymbol IN :currency_symbols " +
+            "AND cr.currencyRateDate = :currency_rate_date")
+    List<CurrencyRate> findByCurrencySymbolsAndCurrencyRateDate(
+            @Param("currency_symbols") List<String> currencySymbols,
+            @Param("currency_rate_date") LocalDate currencyRateDate
+    );
 }

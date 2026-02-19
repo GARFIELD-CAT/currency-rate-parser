@@ -13,6 +13,7 @@ import ru.utmn.currency_rate_parser.model.CurrencyRate;
 import ru.utmn.currency_rate_parser.model.ListingApiResponse;
 import ru.utmn.currency_rate_parser.repository.CurrencyRateRepository;
 import ru.utmn.currency_rate_parser.repository.CurrencyRepository;
+import ru.utmn.currency_rate_parser.service.CurrencyRateParserService;
 import ru.utmn.currency_rate_parser.utils.RoundUtils;
 
 import java.time.LocalDate;
@@ -35,12 +36,14 @@ public class CurrencyRateTaskWorker {
     private final ExecutorService executorService;
     private final WebClient webClient;
     private final ObjectMapper objectMapper;
+    private final CurrencyRateParserService currencyRateParserService;
 
-    public CurrencyRateTaskWorker(CurrencyRateTaskProducer currencyRateTaskProducer, CurrencyRateRepository currencyRateRepository, CurrencyRepository currencyRepository, WebClient webClient, ObjectMapper objectMapper) {
+    public CurrencyRateTaskWorker(CurrencyRateTaskProducer currencyRateTaskProducer, CurrencyRateRepository currencyRateRepository, CurrencyRepository currencyRepository, WebClient webClient, ObjectMapper objectMapper, CurrencyRateParserService currencyRateParserService) {
         this.currencyRateTaskProducer = currencyRateTaskProducer;
         this.currencyRateRepository = currencyRateRepository;
         this.currencyRepository = currencyRepository;
         this.objectMapper = objectMapper;
+        this.currencyRateParserService = currencyRateParserService;
         this.executorService = Executors.newFixedThreadPool(CURRENCY_RATE_TASK_WORKERS_COUNT);
         this.webClient = webClient;
     }
@@ -111,20 +114,22 @@ public class CurrencyRateTaskWorker {
         Optional<CurrencyRate> old_currency = currencyRateRepository.findByCurrencyAndCurrencyRateDateAndBaseCurrency(currency, currencyRateDate, baseCurrency);
 
         if (old_currency.isPresent()) {
-            currencyRateRepository.save(
+            currencyRateParserService.saveCurrencyRate(
+                    currency.getCurrencySymbol(),
                     new CurrencyRate(
-                            old_currency.get().getId(),
-                            rate,
-                            change24h,
-                            currencyRateDate,
-                            baseCurrency,
-                            LocalDateTime.now(),
-                            currency
+                        old_currency.get().getId(),
+                        rate,
+                        change24h,
+                        currencyRateDate,
+                        baseCurrency,
+                        LocalDateTime.now(),
+                        currency
                     )
             );
             log.info("{}: Курс валюты с именем {} в {} успешно обновлен.", Thread.currentThread().getName(), currency.getCurrencySymbol(), baseCurrency);
         } else {
-            currencyRateRepository.save(
+            currencyRateParserService.saveCurrencyRate(
+                    currency.getCurrencySymbol(),
                     new CurrencyRate(
                             rate,
                             change24h,
