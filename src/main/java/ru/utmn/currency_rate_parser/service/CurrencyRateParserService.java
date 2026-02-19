@@ -169,9 +169,6 @@ public class CurrencyRateParserService {
 
     public List<CurrencyRate> parseCurrencyRates(LocalDate parseDay, List<String> currencyNames, Boolean manualParse) {
         log.info("{}: Начинаю асинхронную агрегацию данных по списку валют за {}.", Thread.currentThread().getName(), parseDay);
-        parsingTimer.record(() -> {
-            // Ваша логика парсинга
-        });
         long startTime = convertDateToTimestamp(parseDay);
         List<CompletableFuture<List<CurrencyRate>>> futures = currencyNames.stream()
                 .map(name -> CompletableFuture.supplyAsync(() -> {
@@ -205,18 +202,27 @@ public class CurrencyRateParserService {
                         urls.add(buildHistoricalUrl(currency.get().getCoinMarketCapId(), startTime, RUB_CONVERT_ID));
                     }
 
-                    for (String url : urls) {
-                        String baseCurrency = url.contains(RUB_CONVERT_ID) ? "RUB" : "USD";
-                        Optional<CurrencyRate> currencyRate = Optional.ofNullable(fetchCurrencyRateData(url, currency.get(), baseCurrency));
+                    List<CompletableFuture<CurrencyRate>> futuresCurrencyRate = urls.stream()
+                            .map(url -> CompletableFuture.supplyAsync(() -> {
+                                String baseCurrency = url.contains(RUB_CONVERT_ID) ? "RUB" : "USD";
+                                return fetchCurrencyRateData(url, currency.get(), baseCurrency);
+                            }))
+                            .toList();
 
-                        if (currencyRate.isPresent()) {
-                            currencyRateRepository.save(currencyRate.get());
-                            log.info("{} Курс для валюты {} за {} успешно сохранен в базе данных.", Thread.currentThread().getName(), name, parseDay);
-                            successCounter.increment();
-                            results.add(currencyRate.get());
-                        }
-                    }
-                    return results;
+                    List<CompletableFuture<CurrencyRate>> results1 = futuresCurrencyRate.stream()
+                            .map(future -> future.thenApply(currencyRate -> {
+                                if (currencyRate != null) {
+                                    currencyRateRepository.save(currencyRate);
+                                    log.info("{} Курс для валюты {} за {} успешно сохранен в базе данных.", Thread.currentThread().getName(), name, parseDay);
+                                    successCounter.increment();
+                                }
+                                return currencyRate;
+                            }))
+                            .toList();
+
+                    return results1.stream()
+                            .map(CompletableFuture::join)
+                            .collect(Collectors.toList());
                 }))
                 .toList();
 
@@ -260,6 +266,8 @@ public class CurrencyRateParserService {
                                     });
                         } else {
                             evaluateExecutionTime(startTime);
+                            errorCounter.increment();
+                            parsingTimer.record(System.nanoTime() - startTime, TimeUnit.NANOSECONDS);
 
                             return response.bodyToMono(String.class)
                                     .map(errorBody -> {
@@ -275,6 +283,7 @@ public class CurrencyRateParserService {
             evaluateExecutionTime(startTime);
             log.error("Ошибка при скачивании курсов валют: {}.", e.toString());
             errorCounter.increment();
+            parsingTimer.record(System.nanoTime() - startTime, TimeUnit.NANOSECONDS);
 
             return null;
         }

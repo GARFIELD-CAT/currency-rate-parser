@@ -20,8 +20,8 @@ public class WebConfig {
         HttpClient httpClient = HttpClient.create(provider)
                 .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000)
                 .doOnConnected(conn -> conn
-                        .addHandlerLast(new ReadTimeoutHandler(15))
-                        .addHandlerLast(new WriteTimeoutHandler(10))
+                        .addHandlerLast(new ReadTimeoutHandler(5))
+                        .addHandlerLast(new WriteTimeoutHandler(5))
                 );
 
         return WebClient.builder()
