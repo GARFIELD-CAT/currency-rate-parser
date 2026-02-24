@@ -66,7 +66,7 @@ public class CurrencyRateParserController {
     @PostMapping("/parse")
     public ResponseEntity<?> parseCurrencyRates(@RequestBody CurrencyHistoryRatesRequestBody body) {
         LocalDate date;
-        Span rootSpan = tracer.spanBuilder("GET /api/v1/currency-rates/parse")
+        Span rootSpan = tracer.spanBuilder("POST /api/v1/currency-rates/parse")
                 .setSpanKind(SpanKind.SERVER)
                 .startSpan();
 
