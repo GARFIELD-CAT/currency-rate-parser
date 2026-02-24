@@ -5,6 +5,8 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.opentelemetry.api.trace.*;
+import io.opentelemetry.context.Context;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,7 +19,6 @@ import ru.utmn.currency_rate_parser.model.*;
 import ru.utmn.currency_rate_parser.model.Currency;
 import ru.utmn.currency_rate_parser.repository.CurrencyRateRepository;
 import ru.utmn.currency_rate_parser.repository.CurrencyRepository;
-import ru.utmn.currency_rate_parser.service.aggregator.CurrencyRateTaskProducer;
 import ru.utmn.currency_rate_parser.task.LoggerTask;
 import ru.utmn.currency_rate_parser.utils.RoundUtils;
 
@@ -47,9 +48,18 @@ public class CurrencyRateParserService {
     private final Counter errorCounter;
     private final Gauge currencyRateDBSize;
     private final CurrencyLockManager lockManager;
+    private final Tracer tracer;
     AtomicInteger demonCount = new AtomicInteger(0);
 
-    public CurrencyRateParserService(WebClient webClient, CurrencyRepository currencyRepository, CurrencyRateRepository currencyRateRepository, CurrencyRateTaskProducer currencyRateTaskProducer, ObjectMapper objectMapper, MeterRegistry meterRegistry, CurrencyLockManager lockManager) {
+    public CurrencyRateParserService(
+            WebClient webClient,
+            CurrencyRepository currencyRepository,
+            CurrencyRateRepository currencyRateRepository,
+            ObjectMapper objectMapper,
+            MeterRegistry meterRegistry,
+            CurrencyLockManager lockManager,
+            Tracer tracer
+    ) {
         this.webClient = webClient;
         this.currencyRepository = currencyRepository;
         this.currencyRateRepository = currencyRateRepository;
@@ -67,6 +77,7 @@ public class CurrencyRateParserService {
                 .description("Количество курсов валют в базе данных")
                 .register(meterRegistry);
         this.lockManager = lockManager;
+        this.tracer = tracer;
     }
 
     private CurrencyRate getCurrencyRate(Currency currency, List<HistoryApiResponse.QuoteData> quotes, String baseCurrency) {
@@ -99,208 +110,275 @@ public class CurrencyRateParserService {
     }
 
     public List<CurrencyWithRatesDto> findAllCurrencyWithRates(int page, int size) {
-        List<String> allCurrencySymbols = currencyRateRepository.findDistinctCurrencyInfo();
+        Span childSpan = tracer.spanBuilder("currencyRateParserService.findAllCurrencyWithRates")
+                .setSpanKind(SpanKind.INTERNAL)
+                .startSpan();
 
-        int fromIndex = page * size;
+        try (var scope = childSpan.makeCurrent()) {
+            List<String> allCurrencySymbols = currencyRateRepository.findDistinctCurrencyInfo();
 
-        if (fromIndex >= allCurrencySymbols.size()) {
-            log.info("Запрашиваемая страница выходит за пределы доступных данных.");
-            return Collections.emptyList();
+            int fromIndex = page * size;
+
+            if (fromIndex >= allCurrencySymbols.size()) {
+                log.info("Запрашиваемая страница выходит за пределы доступных данных.");
+                return Collections.emptyList();
+            }
+
+            int toIndex = Math.min(fromIndex + size, allCurrencySymbols.size());
+            List<String> paginatedCurrencySymbols = allCurrencySymbols.subList(fromIndex, toIndex);
+
+            if (paginatedCurrencySymbols.isEmpty()) {
+                return Collections.emptyList();
+            }
+
+            LocalDate rateDate = LocalDate.now();
+
+            List<CurrencyRate> allRatesForPage = currencyRateRepository.findByCurrencySymbolsAndCurrencyRateDate(
+                    paginatedCurrencySymbols,
+                    rateDate
+            );
+
+            log.info("{}: Загружено {} записей о курсах для {} символов.",
+                    Thread.currentThread().getName(),
+                    allRatesForPage.size(),
+                    paginatedCurrencySymbols.size());
+
+            Map<String, List<CurrencyRate>> groupedBySymbol = allRatesForPage.stream()
+                    .collect(Collectors.groupingBy(rate -> rate.getCurrency().getCurrencySymbol()));
+
+            List<CurrencyWithRatesDto> resultDto = paginatedCurrencySymbols.stream()
+                    .map(symbol -> {
+                        List<CurrencyRate> ratesForSymbol = groupedBySymbol.get(symbol);
+
+                        if (ratesForSymbol == null || ratesForSymbol.isEmpty()) {
+                            return null;
+                        }
+
+                        return transformToDto(symbol, ratesForSymbol);
+                    })
+                    .filter(Objects::nonNull)
+                    .toList();
+
+            log.info("{}: Успешно собрал информацию по {} валютам.", Thread.currentThread().getName(), resultDto.size());
+
+            return resultDto;
+        } catch (Exception e) {
+            childSpan.recordException(e);
+            childSpan.setStatus(StatusCode.ERROR);
+            throw e;
+        } finally {
+            childSpan.end();
         }
-
-        int toIndex = Math.min(fromIndex + size, allCurrencySymbols.size());
-        List<String> paginatedCurrencySymbols = allCurrencySymbols.subList(fromIndex, toIndex);
-
-        if (paginatedCurrencySymbols.isEmpty()) {
-            return Collections.emptyList();
-        }
-
-        LocalDate rateDate = LocalDate.now();
-
-        List<CurrencyRate> allRatesForPage = currencyRateRepository.findByCurrencySymbolsAndCurrencyRateDate(
-                paginatedCurrencySymbols,
-                rateDate
-        );
-
-        log.info("{}: Загружено {} записей о курсах для {} символов.",
-                Thread.currentThread().getName(),
-                allRatesForPage.size(),
-                paginatedCurrencySymbols.size());
-
-        Map<String, List<CurrencyRate>> groupedBySymbol = allRatesForPage.stream()
-                .collect(Collectors.groupingBy(rate -> rate.getCurrency().getCurrencySymbol()));
-
-        List<CurrencyWithRatesDto> resultDto = paginatedCurrencySymbols.stream()
-                .map(symbol -> {
-                    List<CurrencyRate> ratesForSymbol = groupedBySymbol.get(symbol);
-
-                    if (ratesForSymbol == null || ratesForSymbol.isEmpty()) {
-                        return null;
-                    }
-
-                    return transformToDto(symbol, ratesForSymbol);
-                })
-                .filter(Objects::nonNull)
-                .toList();
-
-        log.info("{}: Успешно собрал информацию по {} валютам.", Thread.currentThread().getName(), resultDto.size());
-
-        return resultDto;
     }
 
 
     private CurrencyWithRatesDto transformToDto(String symbol, List<CurrencyRate> allCurrencyRatesForDay) {
-        CurrencyRate firstElem = allCurrencyRatesForDay.get(0);
-        Currency currency = firstElem.getCurrency();
+        Span childSpan = tracer.spanBuilder("currencyRateParserService.transformToDto")
+                .setSpanKind(SpanKind.INTERNAL)
+                .startSpan();
 
-        CurrencyWithRatesDto currencyWithRatesDto = new CurrencyWithRatesDto();
-        currencyWithRatesDto.setCurrencyId(currency.getId());
-        currencyWithRatesDto.setCurrencyName(currency.getCurrencyName());
-        currencyWithRatesDto.setCurrencySymbol(currency.getCurrencySymbol());
+        try (var scope = childSpan.makeCurrent()) {
 
-        List<CurrencyRateDto> quotes = new ArrayList<>(allCurrencyRatesForDay.size());
+            CurrencyRate firstElem = allCurrencyRatesForDay.get(0);
+            Currency currency = firstElem.getCurrency();
 
-        for (var rate : allCurrencyRatesForDay) {
-            CurrencyRateDto dto = new CurrencyRateDto();
-            dto.setRateId(rate.getId());
-            dto.setRate(rate.getRate());
-            dto.setChange24h(rate.getChange24h());
-            dto.setCurrencyRateDate(rate.getCurrencyRateDate());
-            dto.setBaseCurrency(rate.getBaseCurrency());
-            dto.setLastUpdated(rate.getLastUpdated());
-            quotes.add(dto);
+            CurrencyWithRatesDto currencyWithRatesDto = new CurrencyWithRatesDto();
+            currencyWithRatesDto.setCurrencyId(currency.getId());
+            currencyWithRatesDto.setCurrencyName(currency.getCurrencyName());
+            currencyWithRatesDto.setCurrencySymbol(currency.getCurrencySymbol());
+
+            List<CurrencyRateDto> quotes = new ArrayList<>(allCurrencyRatesForDay.size());
+
+            for (var rate : allCurrencyRatesForDay) {
+                CurrencyRateDto dto = new CurrencyRateDto();
+                dto.setRateId(rate.getId());
+                dto.setRate(rate.getRate());
+                dto.setChange24h(rate.getChange24h());
+                dto.setCurrencyRateDate(rate.getCurrencyRateDate());
+                dto.setBaseCurrency(rate.getBaseCurrency());
+                dto.setLastUpdated(rate.getLastUpdated());
+                quotes.add(dto);
+            }
+
+            currencyWithRatesDto.setQuotes(quotes);
+            log.info("Сбор информации по валюте {} закончен.", symbol);
+
+            return currencyWithRatesDto;
+        } catch (Exception e) {
+            childSpan.recordException(e);
+            childSpan.setStatus(StatusCode.ERROR);
+            throw e;
+        } finally {
+            childSpan.end();
         }
-
-        currencyWithRatesDto.setQuotes(quotes);
-        log.info("Сбор информации по валюте {} закончен.", symbol);
-
-        return currencyWithRatesDto;
     }
 
     public List<CurrencyRate> parseCurrencyRates(LocalDate parseDay, List<String> currencyNames, Boolean manualParse) {
-        log.info("{}: Начинаю асинхронную агрегацию данных по списку валют за {}.", Thread.currentThread().getName(), parseDay);
-        long startTime = convertDateToTimestamp(parseDay);
-        List<CompletableFuture<List<CurrencyRate>>> futures = currencyNames.stream()
-                .map(name -> CompletableFuture.supplyAsync(() -> {
-                    Optional<Currency> currency = currencyRepository.findByCurrencySymbol(name);
-                    List<CurrencyRate> results = new ArrayList<>();
+        Span childSpan = tracer.spanBuilder("currencyRateParserService.parseCurrencyRates")
+                .setSpanKind(SpanKind.INTERNAL)
+                .startSpan();
 
-                    if (currency.isEmpty()) {
-                        log.info("{}: Валюта с именем {} не найдена в базе данных.", Thread.currentThread().getName(), name);
-                        errorCounter.increment();
+        try (var scope = childSpan.makeCurrent()) {
 
-                        return results;
-                    }
+            log.info("{}: Начинаю асинхронную агрегацию данных по списку валют за {}.", Thread.currentThread().getName(), parseDay);
+            long startTime = convertDateToTimestamp(parseDay);
+            List<CompletableFuture<List<CurrencyRate>>> futures = currencyNames.stream()
+                    .map(name -> CompletableFuture.supplyAsync(() -> {
+                        Optional<Currency> currency = currencyRepository.findByCurrencySymbol(name);
+                        List<CurrencyRate> results = new ArrayList<>();
 
-                    List<CurrencyRate> currencyRates = currencyRateRepository.findByCurrencyIdAndCurrencyRateDate(currency.get().getId(), parseDay);
+                        if (currency.isEmpty()) {
+                            log.info("{}: Валюта с именем {} не найдена в базе данных.", Thread.currentThread().getName(), name);
+                            errorCounter.increment();
 
-                    if (currencyRates.size() == FIAT_CURRENCY_COUNT && !manualParse) {
-                        log.info("{}: Курсы для валюты {} за {} найдены в базе данных.", Thread.currentThread().getName(), name, parseDay);
-                        successCounter.increment();
+                            return results;
+                        }
 
-                        return currencyRates;
-                    }
+                        List<CurrencyRate> currencyRates = currencyRateRepository.findByCurrencyIdAndCurrencyRateDate(currency.get().getId(), parseDay);
 
-                    log.info("{}: Курс для валюты {} за {} не найден в базе данных.", Thread.currentThread().getName(), name, parseDay);
+                        if (currencyRates.size() == FIAT_CURRENCY_COUNT && !manualParse) {
+                            log.info("{}: Курсы для валюты {} за {} найдены в базе данных.", Thread.currentThread().getName(), name, parseDay);
+                            successCounter.increment();
 
-                    List<String> urls = new ArrayList<>(FIAT_CURRENCY_COUNT);
-                    if (parseDay.isEqual(LocalDate.now())) {
-                        urls.add(buildHistoricalUrl(currency.get().getCoinMarketCapId(), USD_CONVERT_ID));
-                        urls.add(buildHistoricalUrl(currency.get().getCoinMarketCapId(), RUB_CONVERT_ID));
-                    } else {
-                        urls.add(buildHistoricalUrl(currency.get().getCoinMarketCapId(), startTime, USD_CONVERT_ID));
-                        urls.add(buildHistoricalUrl(currency.get().getCoinMarketCapId(), startTime, RUB_CONVERT_ID));
-                    }
+                            return currencyRates;
+                        }
 
-                    List<CompletableFuture<CurrencyRate>> futuresCurrencyRate = urls.stream()
-                            .map(url -> CompletableFuture.supplyAsync(() -> {
-                                String baseCurrency = url.contains(RUB_CONVERT_ID) ? "RUB" : "USD";
-                                return fetchCurrencyRateData(url, currency.get(), baseCurrency);
-                            }))
-                            .toList();
+                        log.info("{}: Курс для валюты {} за {} не найден в базе данных.", Thread.currentThread().getName(), name, parseDay);
 
-                    List<CompletableFuture<CurrencyRate>> results1 = futuresCurrencyRate.stream()
-                            .map(future -> future.thenApply(currencyRate -> {
-                                if (currencyRate != null) {
-                                    saveCurrencyRate(currency.get().getCurrencySymbol(), currencyRate);
-                                    log.info("{} Курс для валюты {} за {} успешно сохранен в базе данных.", Thread.currentThread().getName(), name, parseDay);
-                                    successCounter.increment();
-                                }
-                                return currencyRate;
-                            }))
-                            .toList();
+                        List<String> urls = new ArrayList<>(FIAT_CURRENCY_COUNT);
+                        if (parseDay.isEqual(LocalDate.now())) {
+                            urls.add(buildHistoricalUrl(currency.get().getCoinMarketCapId(), USD_CONVERT_ID));
+                            urls.add(buildHistoricalUrl(currency.get().getCoinMarketCapId(), RUB_CONVERT_ID));
+                        } else {
+                            urls.add(buildHistoricalUrl(currency.get().getCoinMarketCapId(), startTime, USD_CONVERT_ID));
+                            urls.add(buildHistoricalUrl(currency.get().getCoinMarketCapId(), startTime, RUB_CONVERT_ID));
+                        }
 
-                    return results1.stream()
-                            .map(CompletableFuture::join)
-                            .collect(Collectors.toList());
-                }))
-                .toList();
+                        List<CompletableFuture<CurrencyRate>> futuresCurrencyRate = urls.stream()
+                                .map(url -> CompletableFuture.supplyAsync(() -> {
+                                    String baseCurrency = url.contains(RUB_CONVERT_ID) ? "RUB" : "USD";
+                                    return fetchCurrencyRateData(url, currency.get(), baseCurrency);
+                                }))
+                                .toList();
 
-        List<CurrencyRate> combinedResults = futures.stream()
-                .map(CompletableFuture::join)
-                .flatMap(List::stream)
-                .collect(Collectors.toList());
+                        List<CompletableFuture<CurrencyRate>> results1 = futuresCurrencyRate.stream()
+                                .map(future -> future.thenApply(currencyRate -> {
+                                    if (currencyRate != null) {
+                                        saveCurrencyRate(currency.get().getCurrencySymbol(), currencyRate);
+                                        log.info("{} Курс для валюты {} за {} успешно сохранен в базе данных.", Thread.currentThread().getName(), name, parseDay);
+                                        successCounter.increment();
+                                    }
+                                    return currencyRate;
+                                }))
+                                .toList();
 
-        parsingTimer.record(System.nanoTime() - startTime, TimeUnit.NANOSECONDS);
+                        return results1.stream()
+                                .map(CompletableFuture::join)
+                                .collect(Collectors.toList());
+                    }))
+                    .toList();
 
-        return combinedResults;
+            List<CurrencyRate> combinedResults = futures.stream()
+                    .map(CompletableFuture::join)
+                    .flatMap(List::stream)
+                    .collect(Collectors.toList());
+
+            parsingTimer.record(System.nanoTime() - startTime, TimeUnit.NANOSECONDS);
+
+            return combinedResults;
+        } catch (Exception e) {
+            childSpan.recordException(e);
+            childSpan.setStatus(StatusCode.ERROR);
+            throw e;
+        } finally {
+            childSpan.end();
+        }
     }
 
     private CurrencyRate fetchCurrencyRateData(String url, Currency currency, String baseCurrency) {
-        long startTime = System.nanoTime();
+        Span childSpan = tracer.spanBuilder("currencyRateParserService.fetchCurrencyRateData")
+                .setSpanKind(SpanKind.INTERNAL)
+                .setAttribute("http-url", url)
+                .startSpan();
 
-        try {
-            return (CurrencyRate) webClient.get()
-                    .uri(url)
-                    .exchangeToMono(response -> {
-                        if (response.statusCode().is2xxSuccessful()) {
-                            evaluateExecutionTime(startTime);
+        try (var scope = childSpan.makeCurrent()) {
+            long startTime = System.nanoTime();
 
-                            return response.bodyToMono(String.class)
-                                    .map(body -> {
-                                        try {
-                                            HistoryApiResponse result = objectMapper.readValue(body, HistoryApiResponse.class);
-                                            var data = result.getData();
-                                            var quotes = data.getQuotes();
+            try {
+                return (CurrencyRate) webClient.get()
+                        .uri(url)
+                        .exchangeToMono(response -> {
+                            if (response.statusCode().is2xxSuccessful()) {
+                                evaluateExecutionTime(startTime);
 
-                                            if (quotes.isEmpty()) {
-                                                return null;
+                                return response.bodyToMono(String.class)
+                                        .map(body -> {
+                                            try {
+                                                HistoryApiResponse result = objectMapper.readValue(body, HistoryApiResponse.class);
+                                                var data = result.getData();
+                                                var quotes = data.getQuotes();
+
+                                                if (quotes.isEmpty()) {
+                                                    return null;
+                                                }
+
+                                                CurrencyRate currencyRate = getCurrencyRate(currency, quotes, baseCurrency);
+                                                childSpan.setStatus(StatusCode.OK);
+
+                                                return currencyRate;
+                                            } catch (Exception e) {
+                                                return Mono.error(e);
                                             }
+                                        });
+                            } else {
+                                evaluateExecutionTime(startTime);
+                                errorCounter.increment();
+                                parsingTimer.record(System.nanoTime() - startTime, TimeUnit.NANOSECONDS);
 
-                                            CurrencyRate currencyRate = getCurrencyRate(currency, quotes, baseCurrency);
+                                return response.bodyToMono(String.class)
+                                        .map(errorBody -> {
+                                            log.error("Ошибка при скачивании курсов валют: {}.", errorBody);
+                                            errorCounter.increment();
+                                            childSpan.setStatus(StatusCode.ERROR, "HTTP" + response.statusCode());
 
-                                            return currencyRate;
-                                        } catch (Exception e) {
-                                            return Mono.error(e);
-                                        }
-                                    });
-                        } else {
-                            evaluateExecutionTime(startTime);
-                            errorCounter.increment();
-                            parsingTimer.record(System.nanoTime() - startTime, TimeUnit.NANOSECONDS);
+                                            return null;
+                                        });
+                            }
+                        })
+                        .block();
+            } catch (Exception e) {
+                evaluateExecutionTime(startTime);
+                log.error("Ошибка при скачивании курсов валют: {}.", e.toString());
+                errorCounter.increment();
+                parsingTimer.record(System.nanoTime() - startTime, TimeUnit.NANOSECONDS);
+                childSpan.setStatus(StatusCode.ERROR, e.getMessage());
 
-                            return response.bodyToMono(String.class)
-                                    .map(errorBody -> {
-                                        log.error("Ошибка при скачивании курсов валют: {}.", errorBody);
-                                        errorCounter.increment();
-
-                                        return null;
-                                    });
-                        }
-                    })
-                    .block();
+                return null;
+            }
         } catch (Exception e) {
-            evaluateExecutionTime(startTime);
-            log.error("Ошибка при скачивании курсов валют: {}.", e.toString());
-            errorCounter.increment();
-            parsingTimer.record(System.nanoTime() - startTime, TimeUnit.NANOSECONDS);
-
-            return null;
+            childSpan.recordException(e);
+            childSpan.setStatus(StatusCode.ERROR);
+            throw e;
+        } finally {
+            childSpan.end();
         }
     }
 
     public Page<Currency> getAllCurrency(Pageable pageable) {
-        return currencyRepository.findAll(pageable);
+        Span childSpan = tracer.spanBuilder("currencyRateParserService.getAllCurrency")
+                .setSpanKind(SpanKind.INTERNAL)
+                .startSpan();
+
+        try (var scope = childSpan.makeCurrent()) {
+            return currencyRepository.findAll(pageable);
+
+        } catch (Exception e) {
+            childSpan.recordException(e);
+            childSpan.setStatus(StatusCode.ERROR);
+            throw e;
+        } finally {
+            childSpan.end();
+        }
     }
 
     @PostConstruct

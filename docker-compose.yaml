@@ -11,13 +11,6 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql
 
-    #  redis-task:
-    #    image: redis:latest
-    #    container_name: redis-task
-    #    ports:
-    #      - "6379:6379"
-    #    restart: unless-stopped
-
   prometheus:
     container_name: prometheus
     image: prom/prometheus:latest
@@ -39,6 +32,15 @@ services:
       - GF_FEATURE_TOGGLES_ENABLE=+allowInsecureUrl
     volumes:
       - grafana_data:/var/lib/grafana
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    ports:
+      - "4318:4318"   # OTLP/HTTP (для трейсов и метрик)
+      - "16686:16686" # Веб-интерфейс Jaeger
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    restart: unless-stopped
 
 volumes:
   grafana_data:

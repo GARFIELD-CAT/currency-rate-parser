@@ -1,6 +1,7 @@
 package ru.utmn.currency_rate_parser.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.opentelemetry.api.trace.*;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,9 +23,9 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -37,6 +38,9 @@ public class CurrencyRateParserControllerTest {
 
     @MockitoBean
     private CurrencyRateParserService currencyRateParserService;
+
+    @MockitoBean
+    private Tracer tracer;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -51,7 +55,13 @@ public class CurrencyRateParserControllerTest {
         expectedRates.add(dto1);
         expectedRates.add(dto2);
 
-        Mockito.when(currencyRateParserService.findAllCurrencyWithRates(page, size))
+        Span mockSpan = mock(Span.class);
+        SpanBuilder mockSpanBuilder = mock(SpanBuilder.class);
+        when(tracer.spanBuilder(anyString())).thenReturn(mockSpanBuilder);
+        when(mockSpanBuilder.setSpanKind(any(SpanKind.class))).thenReturn(mockSpanBuilder);
+        when(mockSpanBuilder.startSpan()).thenReturn(mockSpan);
+
+        when(currencyRateParserService.findAllCurrencyWithRates(page, size))
                 .thenReturn(expectedRates);
 
         mockMvc.perform(get("/api/v1/currency-rates/get-all")
@@ -72,7 +82,13 @@ public class CurrencyRateParserControllerTest {
         CurrencyWithRatesDto dto1 = new CurrencyWithRatesDto(1, "Bitcoin", "BTC", new ArrayList<>());
         expectedRates.add(dto1);
 
-        Mockito.when(currencyRateParserService.findAllCurrencyWithRates(0, 100))
+        Span mockSpan = mock(Span.class);
+        SpanBuilder mockSpanBuilder = mock(SpanBuilder.class);
+        when(tracer.spanBuilder(anyString())).thenReturn(mockSpanBuilder);
+        when(mockSpanBuilder.setSpanKind(any(SpanKind.class))).thenReturn(mockSpanBuilder);
+        when(mockSpanBuilder.startSpan()).thenReturn(mockSpan);
+
+        when(currencyRateParserService.findAllCurrencyWithRates(0, 100))
                 .thenReturn(expectedRates);
 
         mockMvc.perform(get("/api/v1/currency-rates/get-all")
@@ -84,7 +100,13 @@ public class CurrencyRateParserControllerTest {
 
     @Test
     void getAllCurrencyRates_whenServiceReturnsEmptyList_shouldReturnEmptyList() throws Exception {
-        Mockito.when(currencyRateParserService.findAllCurrencyWithRates(anyInt(), anyInt()))
+        Span mockSpan = mock(Span.class);
+        SpanBuilder mockSpanBuilder = mock(SpanBuilder.class);
+        when(tracer.spanBuilder(anyString())).thenReturn(mockSpanBuilder);
+        when(mockSpanBuilder.setSpanKind(any(SpanKind.class))).thenReturn(mockSpanBuilder);
+        when(mockSpanBuilder.startSpan()).thenReturn(mockSpan);
+
+        when(currencyRateParserService.findAllCurrencyWithRates(0, 100))
                 .thenReturn(Collections.emptyList());
 
         mockMvc.perform(get("/api/v1/currency-rates/get-all")
@@ -96,6 +118,12 @@ public class CurrencyRateParserControllerTest {
 
     @Test
     void parseCurrencyRates_shouldReturnListOfCurrencyRate() throws Exception {
+        Span mockSpan = mock(Span.class);
+        SpanBuilder mockSpanBuilder = mock(SpanBuilder.class);
+        when(tracer.spanBuilder(anyString())).thenReturn(mockSpanBuilder);
+        when(mockSpanBuilder.setSpanKind(any(SpanKind.class))).thenReturn(mockSpanBuilder);
+        when(mockSpanBuilder.startSpan()).thenReturn(mockSpan);
+
         // Given
         CurrencyHistoryRatesRequestBody requestBody = new CurrencyHistoryRatesRequestBody();
         requestBody.setParseDate("2023-10-27");
@@ -130,6 +158,12 @@ public class CurrencyRateParserControllerTest {
 
     @Test
     void parseCurrencyRates_withNullSymbol_shouldFilterNulls() throws Exception {
+        Span mockSpan = mock(Span.class);
+        SpanBuilder mockSpanBuilder = mock(SpanBuilder.class);
+        when(tracer.spanBuilder(anyString())).thenReturn(mockSpanBuilder);
+        when(mockSpanBuilder.setSpanKind(any(SpanKind.class))).thenReturn(mockSpanBuilder);
+        when(mockSpanBuilder.startSpan()).thenReturn(mockSpan);
+
         CurrencyHistoryRatesRequestBody requestBody = new CurrencyHistoryRatesRequestBody();
         requestBody.setParseDate("2023-10-27");
         requestBody.setManualParse(false);
@@ -156,6 +190,12 @@ public class CurrencyRateParserControllerTest {
 
     @Test
     void parseCurrencyRates_invalidDate_shouldThrowException() throws Exception {
+        Span mockSpan = mock(Span.class);
+        SpanBuilder mockSpanBuilder = mock(SpanBuilder.class);
+        when(tracer.spanBuilder(anyString())).thenReturn(mockSpanBuilder);
+        when(mockSpanBuilder.setSpanKind(any(SpanKind.class))).thenReturn(mockSpanBuilder);
+        when(mockSpanBuilder.startSpan()).thenReturn(mockSpan);
+
         // Given
         CurrencyHistoryRatesRequestBody requestBody = new CurrencyHistoryRatesRequestBody();
         requestBody.setParseDate("2023/10/27"); // Неправильный формат
@@ -171,6 +211,12 @@ public class CurrencyRateParserControllerTest {
 
     @Test
     void getAllCurrency_shouldReturnListOfCurrency() throws Exception {
+        Span mockSpan = mock(Span.class);
+        SpanBuilder mockSpanBuilder = mock(SpanBuilder.class);
+        when(tracer.spanBuilder(anyString())).thenReturn(mockSpanBuilder);
+        when(mockSpanBuilder.setSpanKind(any(SpanKind.class))).thenReturn(mockSpanBuilder);
+        when(mockSpanBuilder.startSpan()).thenReturn(mockSpan);
+
         // Given
         int page = 0;
         int size = 50;
@@ -209,6 +255,12 @@ public class CurrencyRateParserControllerTest {
 
     @Test
     void getAllCurrency_withDefaultParams_shouldReturnListOfCurrency() throws Exception {
+        Span mockSpan = mock(Span.class);
+        SpanBuilder mockSpanBuilder = mock(SpanBuilder.class);
+        when(tracer.spanBuilder(anyString())).thenReturn(mockSpanBuilder);
+        when(mockSpanBuilder.setSpanKind(any(SpanKind.class))).thenReturn(mockSpanBuilder);
+        when(mockSpanBuilder.startSpan()).thenReturn(mockSpan);
+
         List<Currency> expectedCurrencies = new ArrayList<>();
         Currency currency1 = new Currency(1, 100, "Bitcoin", "BTC");
         expectedCurrencies.add(currency1);
@@ -228,6 +280,12 @@ public class CurrencyRateParserControllerTest {
 
     @Test
     void getAllCurrency_withSortDirectionDescending_shouldApplyCorrectSort() throws Exception {
+        Span mockSpan = mock(Span.class);
+        SpanBuilder mockSpanBuilder = mock(SpanBuilder.class);
+        when(tracer.spanBuilder(anyString())).thenReturn(mockSpanBuilder);
+        when(mockSpanBuilder.setSpanKind(any(SpanKind.class))).thenReturn(mockSpanBuilder);
+        when(mockSpanBuilder.startSpan()).thenReturn(mockSpan);
+
         String sortBy = "currencyName";
         String sortDir = "desc";
 
@@ -258,6 +316,12 @@ public class CurrencyRateParserControllerTest {
 
     @Test
     void getAllCurrency_whenServiceReturnsEmptyList_shouldReturnEmptyList() throws Exception {
+        Span mockSpan = mock(Span.class);
+        SpanBuilder mockSpanBuilder = mock(SpanBuilder.class);
+        when(tracer.spanBuilder(anyString())).thenReturn(mockSpanBuilder);
+        when(mockSpanBuilder.setSpanKind(any(SpanKind.class))).thenReturn(mockSpanBuilder);
+        when(mockSpanBuilder.startSpan()).thenReturn(mockSpan);
+
         Page<Currency> currencyPage = Mockito.mock(Page.class);
         Mockito.when(currencyPage.getContent()).thenReturn(Collections.emptyList());
 

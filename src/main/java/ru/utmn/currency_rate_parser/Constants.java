@@ -12,4 +12,6 @@ public class Constants {
     public final static Integer PRODUCER_EXECUTOR_COUNT = 10;
     public final static Integer CURRENCY_RATE_AGGREGATION_INTERVAL_MINUTES = 10; // 10 минут.
     public final static Integer CURRENCY_RATE_TASK_WORKERS_COUNT = 10;
+    public final static String SERVICE_VERSION = "1.0.1";
+    public final static String SERVICE_NAME = "CurrencyRateParserApp";
 }
