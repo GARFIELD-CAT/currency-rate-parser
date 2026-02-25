@@ -106,7 +106,7 @@ this.currencyRateDBSize = Gauge.builder("client.currency_rate.db.size", this::ge
 
 - **Отсутствие индексов**
   - Добавил индексы для оптимизации времени выполнения запросов к БД для полей
-    `currencyRateDate` в таблице `сurrency_rate` и `currencySymbol` в таблице сurrency
+    `currencyRateDate` в таблице `сurrency_rate` и `currencySymbol` в таблице `сurrency`
 
 - **Синхронизация потоков**
   - Добавил `ReentrantLock` на название конкретной криптовалюты с помощью компонента `CurrencyLockManager` для синхронизации работы потоков при сохранении информации о курсах валют в `currencyRateRepository`
